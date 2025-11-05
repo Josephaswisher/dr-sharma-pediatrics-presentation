@@ -169,7 +169,7 @@ export default function SlideRenderer({ slide, darkMode }: SlideRendererProps) {
               "px-3 py-1 rounded-full",
               darkMode ? "bg-inova-blue/20 text-inova-blue" : "bg-inova-blue/10 text-inova-blue"
             )}>
-              Slide {slide.id}/18
+              Slide {slide.id}/21
             </span>
             <span className={cn(
               "px-3 py-1 rounded-full",
