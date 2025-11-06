@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { ButterflyPatterns } from './ButterflyPatterns';
 import IllustratedButterflySlide from './IllustratedButterflySlide';
+import { slideTransition, staggerContainer, staggerItem, scaleIn } from '@/utils/animations';
 
 interface SlideRendererProps {
   slide: Slide;
@@ -22,35 +23,53 @@ function getButterflyPattern(slide: Slide): string {
   return 'content';
 }
 
+// Category-specific gradient backgrounds
+function getCategoryGradient(category: string): string {
+  switch (category.toLowerCase()) {
+    case 'clinical pearl':
+      return 'from-inova-blue to-inova-teal';
+    case 'diagnostic approach':
+      return 'from-inova-teal to-inova-butterfly-wing';
+    case 'management':
+      return 'from-inova-butterfly-wing to-inova-blue';
+    default:
+      return 'from-inova-blue to-inova-teal';
+  }
+}
+
 export default function SlideRenderer({ slide, darkMode }: SlideRendererProps) {
   const butterflyPattern = getButterflyPattern(slide);
+  const categoryGradient = getCategoryGradient(slide.category || '');
 
   return (
     <>
       {/* Include SVG butterfly patterns */}
       <ButterflyPatterns />
 
-      <motion.div
-        key={slide.id}
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: -20 }}
-        transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
-        className={cn(
-          "relative overflow-hidden rounded-3xl min-h-[600px] max-w-6xl mx-auto",
-          "backdrop-blur-xl border shadow-2xl",
-          darkMode
-            ? "bg-gradient-to-br from-gray-900/90 via-gray-800/90 to-gray-900/90 border-white/10"
-            : "bg-gradient-to-br from-white/90 via-white/80 to-white/90 border-gray-200/50"
-        )}
-        style={{
-          backgroundImage: darkMode
-            ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cdefs%3E%3Cpattern id='p' x='0' y='0' width='200' height='200' patternUnits='userSpaceOnUse'%3E%3Cpath d='M50 100Q30 80 30 50Q30 20 50 10Q70 20 70 50Q70 80 50 100Z' fill='%230066CC' opacity='0.03'/%3E%3Cpath d='M150 100Q130 80 130 50Q130 20 150 10Q170 20 170 50Q170 80 150 100Z' fill='%238B4789' opacity='0.03'/%3E%3Cellipse cx='100' cy='60' rx='3' ry='30' fill='%2300A0B0' opacity='0.04'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23p)'/%3E%3C/svg%3E"), linear-gradient(135deg, rgba(17, 24, 39, 0.9) 0%, rgba(31, 41, 55, 0.9) 50%, rgba(17, 24, 39, 0.9) 100%)`
-            : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cdefs%3E%3Cpattern id='p' x='0' y='0' width='200' height='200' patternUnits='userSpaceOnUse'%3E%3Cpath d='M50 100Q30 80 30 50Q30 20 50 10Q70 20 70 50Q70 80 50 100Z' fill='%230066CC' opacity='0.05'/%3E%3Cpath d='M150 100Q130 80 130 50Q130 20 150 10Q170 20 170 50Q170 80 150 100Z' fill='%238B4789' opacity='0.05'/%3E%3Cellipse cx='100' cy='60' rx='3' ry='30' fill='%2300A0B0' opacity='0.06'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23p)'/%3E%3C/svg%3E"), linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.8) 50%, rgba(255, 255, 255, 0.9) 100%)`,
-          backgroundSize: 'auto, cover',
-          backgroundPosition: 'center, center',
-        }}
-      >
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={slide.id}
+          variants={slideTransition}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          custom={1}
+          className={cn(
+            "glass-gradient float-shadow-lg rounded-3xl",
+            "relative overflow-hidden min-h-[600px] max-w-6xl mx-auto",
+            "backdrop-blur-xl border shadow-2xl",
+            darkMode
+              ? "bg-gradient-to-br from-gray-900/90 via-gray-800/90 to-gray-900/90 border-white/10"
+              : "bg-gradient-to-br from-white/90 via-white/80 to-white/90 border-gray-200/50"
+          )}
+          style={{
+            backgroundImage: darkMode
+              ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cdefs%3E%3Cpattern id='p' x='0' y='0' width='200' height='200' patternUnits='userSpaceOnUse'%3E%3Cpath d='M50 100Q30 80 30 50Q30 20 50 10Q70 20 70 50Q70 80 50 100Z' fill='%230066CC' opacity='0.03'/%3E%3Cpath d='M150 100Q130 80 130 50Q130 20 150 10Q170 20 170 50Q170 80 150 100Z' fill='%238B4789' opacity='0.03'/%3E%3Cellipse cx='100' cy='60' rx='3' ry='30' fill='%2300A0B0' opacity='0.04'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23p)'/%3E%3C/svg%3E"), linear-gradient(135deg, rgba(17, 24, 39, 0.9) 0%, rgba(31, 41, 55, 0.9) 50%, rgba(17, 24, 39, 0.9) 100%)`
+              : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cdefs%3E%3Cpattern id='p' x='0' y='0' width='200' height='200' patternUnits='userSpaceOnUse'%3E%3Cpath d='M50 100Q30 80 30 50Q30 20 50 10Q70 20 70 50Q70 80 50 100Z' fill='%230066CC' opacity='0.05'/%3E%3Cpath d='M150 100Q130 80 130 50Q130 20 150 10Q170 20 170 50Q170 80 150 100Z' fill='%238B4789' opacity='0.05'/%3E%3Cellipse cx='100' cy='60' rx='3' ry='30' fill='%2300A0B0' opacity='0.06'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23p)'/%3E%3C/svg%3E"), linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.8) 50%, rgba(255, 255, 255, 0.9) 100%)`,
+            backgroundSize: 'auto, cover',
+            backgroundPosition: 'center, center',
+          }}
+        >
         {/* Glassmorphism Gradient Orbs with Float Animation */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <motion.div
@@ -99,14 +118,43 @@ export default function SlideRenderer({ slide, darkMode }: SlideRendererProps) {
         🦋
       </motion.div>
 
-      {/* Main Content Container */}
-      <div className="relative z-10 p-12">
-        {/* Slide Header with Gradient Underline */}
+      {/* Main Content Container with Staggered Reveal */}
+      <motion.div
+        variants={staggerContainer}
+        initial="initial"
+        animate="animate"
+        className="relative z-10 p-12"
+      >
+        {/* Category Badge - Floating with Glow */}
+        {slide.category && (
+          <motion.div
+            variants={staggerItem}
+            className="absolute top-8 left-8 z-20"
+          >
+            <motion.span
+              whileHover={{ scale: 1.05 }}
+              className={cn(
+                "inline-flex items-center px-4 py-2 rounded-full",
+                "backdrop-blur-md border shadow-lg",
+                "text-sm font-semibold uppercase tracking-wider",
+                "bg-gradient-to-r glow",
+                categoryGradient,
+                "text-white border-white/20",
+                darkMode ? "shadow-glow-blue" : "shadow-glow-blue"
+              )}
+              style={{
+                boxShadow: "0 0 20px rgba(59, 130, 246, 0.4), 0 0 40px rgba(59, 130, 246, 0.2)"
+              }}
+            >
+              {slide.category}
+            </motion.span>
+          </motion.div>
+        )}
+
+        {/* Slide Header with Staggered Reveal */}
         <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
-          className="mb-10"
+          variants={staggerItem}
+          className="mb-10 mt-16"
         >
           <h1 className={cn(
             "text-5xl font-bold mb-3",
@@ -132,16 +180,14 @@ export default function SlideRenderer({ slide, darkMode }: SlideRendererProps) {
           />
         </motion.div>
 
-        {/* Slide Content */}
+        {/* Slide Content with Stagger */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.5 }}
+          variants={staggerItem}
           className="space-y-6 pb-20"
         >
           {renderContent(slide.content, darkMode)}
         </motion.div>
-      </div>
+      </motion.div>
 
       {/* Glassmorphic Footer */}
       <motion.div
@@ -180,7 +226,8 @@ export default function SlideRenderer({ slide, darkMode }: SlideRendererProps) {
           </div>
         </div>
       </motion.div>
-    </motion.div>
+        </motion.div>
+      </AnimatePresence>
     </>
   );
 }

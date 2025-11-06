@@ -92,13 +92,12 @@ export default function Presentation() {
         />
 
         {/* Speaker Notes Panel */}
-        {showNotes && (
-          <NotesPanel
-            notes={slides[currentSlide].speakerNotes}
-            estimatedMinutes={slides[currentSlide].estimatedMinutes}
-            onClose={() => setShowNotes(false)}
-          />
-        )}
+        <NotesPanel
+          notes={slides[currentSlide].speakerNotes}
+          estimatedMinutes={slides[currentSlide].estimatedMinutes}
+          onClose={() => setShowNotes(false)}
+          isOpen={showNotes}
+        />
 
         {/* Keyboard Shortcuts Help */}
         <KeyboardShortcuts
