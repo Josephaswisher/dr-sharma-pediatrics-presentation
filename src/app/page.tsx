@@ -7,12 +7,14 @@ import Navigation from '@/components/Navigation';
 import ProgressTracker from '@/components/ProgressTracker';
 import NotesPanel from '@/components/NotesPanel';
 import ButterflyBackground from '@/components/ButterflyBackground';
+import KeyboardShortcuts from '@/components/KeyboardShortcuts';
 import { useSupabase } from '@/utils/supabase';
 
 export default function Presentation() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showNotes, setShowNotes] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const { trackSlideView } = useSupabase();
 
   useEffect(() => {
@@ -25,16 +27,21 @@ export default function Presentation() {
         nextSlide();
       } else if (e.key === 'ArrowLeft') {
         prevSlide();
-      } else if (e.key === 'n') {
+      } else if (e.key === 'n' || e.key === 'N') {
         setShowNotes(!showNotes);
-      } else if (e.key === 'd') {
+      } else if (e.key === 'd' || e.key === 'D') {
         setDarkMode(!darkMode);
+      } else if (e.key === '?') {
+        setShowKeyboardHelp(!showKeyboardHelp);
+      } else if (e.key === 'Escape') {
+        setShowNotes(false);
+        setShowKeyboardHelp(false);
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentSlide, showNotes, darkMode]);
+  }, [currentSlide, showNotes, darkMode, showKeyboardHelp]);
 
   const nextSlide = () => {
     if (currentSlide < slides.length - 1) {
@@ -92,6 +99,28 @@ export default function Presentation() {
             onClose={() => setShowNotes(false)}
           />
         )}
+
+        {/* Keyboard Shortcuts Help */}
+        <KeyboardShortcuts
+          isOpen={showKeyboardHelp}
+          onClose={() => setShowKeyboardHelp(false)}
+          darkMode={darkMode}
+        />
+
+        {/* Help Button - Fixed Bottom Right */}
+        <button
+          onClick={() => setShowKeyboardHelp(true)}
+          className={`fixed bottom-6 right-6 z-40 p-4 rounded-full shadow-2xl transition-all duration-300 ${
+            darkMode
+              ? 'bg-gradient-to-r from-inova-blue to-inova-teal text-white hover:scale-110'
+              : 'bg-gradient-to-r from-inova-blue to-inova-teal text-white hover:scale-110'
+          }`}
+          title="Keyboard Shortcuts (Press ?)"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
       </div>
     </div>
   );

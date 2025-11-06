@@ -170,9 +170,33 @@ export const slides: Slide[] = [
     speakerNotes: `Onset <24 hours = ALWAYS pathologic. Direct hyperbilirubinemia = ALWAYS pathologic. Biliary atresia is time-sensitive - Kasai procedure must be done before 60 days of life for best outcomes.`
   },
 
-  // Slide 5: Fever in Infants
+  // Slide 5: Neonatal Section Divider - Illustrated Butterfly
   {
     id: 5,
+    title: 'Neonatal Emergencies',
+    category: 'neonatal',
+    estimatedMinutes: 1,
+    content: {
+      type: 'illustrated-butterfly',
+      centerTitle: 'Neonatal Emergencies',
+      theme: 'ocean',
+      leftWing: {
+        title: '🔥 Fever in Infants',
+        content: 'Age matters! <28 days = full septic workup always. 28-90 days = risk stratify. Remember: Ampicillin for Listeria coverage.',
+        icon: '🌡️'
+      },
+      rightWing: {
+        title: '💛 Jaundice Timing',
+        content: '<24 hours = pathologic. Direct hyperbili = cholestasis workup. Biliary atresia is time-sensitive - act fast!',
+        icon: '⚠️'
+      }
+    },
+    speakerNotes: `This beautiful transition slide highlights the two most critical neonatal emergencies: fever and jaundice. Both require immediate, age-appropriate action.`
+  },
+
+  // Slide 6: Fever in Infants
+  {
+    id: 6,
     title: 'Fever Workup: Age-Based Approach',
     category: 'neonatal',
     estimatedMinutes: 3,
@@ -212,9 +236,9 @@ export const slides: Slide[] = [
     speakerNotes: `Key: Age <28 days = ALWAYS full workup including LP. GBS is #1 cause of early-onset sepsis. Remember: neonates cannot localize infections well. Dr. Sharma's Pearl: Classic exam question AND real management issue. Neonates need ampicillin because Listeria isn't covered by 3rd-gen cephalosporins. Missing this = catastrophic.`
   },
 
-  // Slide 6: Congenital Heart Disease
+  // Slide 7: Congenital Heart Disease
   {
-    id: 6,
+    id: 7,
     title: 'Congenital Heart Defects: The Big Picture',
     subtitle: 'Cyanotic vs Acyanotic',
     category: 'cardio',
@@ -246,9 +270,9 @@ export const slides: Slide[] = [
     speakerNotes: `Cyanotic lesions often need PGE1 (prostaglandin) to keep PDA open as a "bridge" until surgery. TGA is the classic emergency needing balloon atrial septostomy. VSD is most common CHD overall.`
   },
 
-  // Slide 7: Quiz - Cardiology
+  // Slide 8: Quiz - Cardiology
   {
-    id: 7,
+    id: 8,
     title: 'Quick Case: Congenital Heart Disease',
     category: 'cardio',
     estimatedMinutes: 2,
@@ -271,9 +295,33 @@ export const slides: Slide[] = [
     speakerNotes: `TGA is incompatible with life without mixing (PDA, ASD, or VSD). PGE1 keeps ductus open. Definitive treatment is arterial switch operation in first week of life.`
   },
 
-  // Slide 8: Asthma Exacerbation
+  // Slide 9: Respiratory Section Divider - Illustrated Butterfly
   {
-    id: 8,
+    id: 9,
+    title: 'Respiratory Emergencies',
+    category: 'respiratory',
+    estimatedMinutes: 1,
+    content: {
+      type: 'illustrated-butterfly',
+      centerTitle: 'Respiratory Distress in Children',
+      theme: 'spring',
+      leftWing: {
+        title: '💨 Asthma Exacerbation',
+        content: 'Albuterol + steroids first-line. Severe? Add ipratropium, IV magnesium. Status asthmaticus = ICU. Peak flow >70% to discharge.',
+        icon: '🫁'
+      },
+      rightWing: {
+        title: '🦠 Bronchiolitis',
+        content: 'RSV most common. NO routine albuterol or steroids! Supportive care: O2, suctioning, hydration. Most improve in 5-7 days.',
+        icon: '🤧'
+      }
+    },
+    speakerNotes: `Respiratory distress is one of the most common pediatric emergencies. This slide contrasts the two main conditions: asthma (needs meds) vs bronchiolitis (supportive care only).`
+  },
+
+  // Slide 10: Asthma Exacerbation
+  {
+    id: 10,
     title: 'Asthma Exacerbation: Management',
     category: 'respiratory',
     estimatedMinutes: 3,
@@ -306,9 +354,9 @@ export const slides: Slide[] = [
     speakerNotes: `Status asthmaticus = life-threatening. Red flags for ICU: Cannot speak in full sentences, severe retractions, altered mental status (CO2 retention), SpO2 <90% despite oxygen.`
   },
 
-  // Slide 9: Bronchiolitis
+  // Slide 11: Bronchiolitis
   {
-    id: 9,
+    id: 11,
     title: 'Bronchiolitis: What NOT to Do',
     subtitle: '2024-2025 Guidelines',
     category: 'respiratory',
@@ -343,9 +391,33 @@ export const slides: Slide[] = [
     speakerNotes: `Common mistake: reflexively giving albuterol for wheezing in infants <2 years. Bronchiolitis is viral - supportive care is mainstay. Most recover in 5-7 days.`
   },
 
-  // Slide 10: Bilious Vomiting - Surgical Emergency
+  // Slide 12: GI Section Divider - Illustrated Butterfly
   {
-    id: 10,
+    id: 12,
+    title: 'Gastrointestinal Emergencies',
+    category: 'gi',
+    estimatedMinutes: 1,
+    content: {
+      type: 'illustrated-butterfly',
+      centerTitle: 'GI Emergencies: Act Fast!',
+      theme: 'autumn',
+      leftWing: {
+        title: '💚 Bilious Vomiting',
+        content: 'Yellow-green vomit = malrotation/volvulus until proven otherwise! NPO, NGT, IV fluids, STAT upper GI series, surgical consult NOW.',
+        icon: '🚨'
+      },
+      rightWing: {
+        title: '🍼 Non-Bilious Vomiting',
+        content: '2-8 weeks old with projectile vomiting? Think pyloric stenosis. Palpable olive + metabolic alkalosis. Fix lytes BEFORE surgery!',
+        icon: '🤮'
+      }
+    },
+    speakerNotes: `The color of vomit is CRITICAL in pediatrics. Bilious = surgical emergency. Non-bilious in young infants = think pyloric stenosis. This distinction saves lives!`
+  },
+
+  // Slide 13: Bilious Vomiting - Surgical Emergency
+  {
+    id: 13,
     title: 'Bilious Vomiting = Surgical Emergency',
     category: 'gi',
     estimatedMinutes: 2,
@@ -373,9 +445,9 @@ export const slides: Slide[] = [
     speakerNotes: `Bilious vomiting = surgical emergency until proven otherwise. Malrotation typically presents in first month of life but can occur at any age. Upper GI series is diagnostic - shows abnormal duodenal position.`
   },
 
-  // Slide 11: Pyloric Stenosis
+  // Slide 14: Pyloric Stenosis
   {
-    id: 11,
+    id: 14,
     title: 'Pyloric Stenosis: Classic Presentation',
     category: 'gi',
     estimatedMinutes: 2,
@@ -406,9 +478,9 @@ export const slides: Slide[] = [
     speakerNotes: `Classic mistake: Rushing to OR without correcting electrolytes. Infant has been vomiting HCl → hypochloremic metabolic alkalosis. Must give IV fluids + potassium repletion before surgery. Dr. Sharma: 'Pyloric stenosis - I see students rush to OR. STOP. Check K+ after hydration. Rushing with profound hypokalemia = complications.'`
   },
 
-  // Slide 12: Intussusception
+  // Slide 15: Intussusception
   {
-    id: 12,
+    id: 15,
     title: 'Intussusception: The Classic Triad',
     category: 'gi',
     estimatedMinutes: 2,
@@ -442,9 +514,9 @@ export const slides: Slide[] = [
     speakerNotes: `Peak age 6-36 months. Lead point in older kids (lymphoma, Meckel diverticulum, polyp). Most idiopathic in infants (hypertrophied Peyer patches post-viral infection). Enema is both diagnostic and therapeutic. Dr. Sharma: 'Intussusception: Classic "currant jelly" stools. 10-month-old with colicky pain → get ultrasound immediately. Don't delay if classic presentation.'`
   },
 
-  // Slide 13: Meningitis - Don't Miss This
+  // Slide 16: Meningitis - Don't Miss This
   {
-    id: 13,
+    id: 16,
     title: 'Bacterial Meningitis: High-Stakes Diagnosis',
     category: 'infectious',
     estimatedMinutes: 3,
@@ -478,9 +550,9 @@ export const slides: Slide[] = [
     speakerNotes: `Key principle: If you suspect meningitis and LP will be delayed, give antibiotics FIRST. Mortality without treatment is ~100%. With treatment, still 10-15%. Complications: hearing loss, developmental delay.`
   },
 
-  // Slide 14: Vaccines - High-Yield Schedule
+  // Slide 17: Vaccines - High-Yield Schedule
   {
-    id: 14,
+    id: 17,
     title: 'Vaccination Schedule: Key Milestones',
     category: 'infectious',
     estimatedMinutes: 2,
@@ -500,9 +572,9 @@ export const slides: Slide[] = [
     speakerNotes: `Common board questions: MMR contraindications (pregnancy, immunocompromised), when to catch up vaccines, post-exposure prophylaxis timing. Rotavirus must be started by 14 weeks, finished by 8 months.`
   },
 
-  // Slide 15: DKA in Children
+  // Slide 18: DKA in Children
   {
-    id: 15,
+    id: 18,
     title: 'Diabetic Ketoacidosis: Pediatric Pearls',
     category: 'emergency',
     estimatedMinutes: 3,
@@ -541,9 +613,9 @@ export const slides: Slide[] = [
     speakerNotes: `Key differences from adult DKA: Higher cerebral edema risk, slower fluid replacement, no insulin bolus. Monitor neuro status closely. Bicarb generally NOT recommended.`
   },
 
-  // Slide 16: Status Epilepticus
+  // Slide 19: Status Epilepticus
   {
-    id: 16,
+    id: 19,
     title: 'Status Epilepticus: Time is Brain',
     category: 'emergency',
     estimatedMinutes: 2,
@@ -579,9 +651,9 @@ export const slides: Slide[] = [
     speakerNotes: `Status epilepticus has ~20% mortality if prolonged. Key is aggressive early treatment. Always check glucose - hypoglycemia is easily treatable cause. Febrile seizure management is different - typically self-limited.`
   },
 
-  // Slide 17: Child Abuse Recognition
+  // Slide 20: Child Abuse Recognition
   {
-    id: 17,
+    id: 20,
     title: 'Child Abuse: Recognition & Reporting',
     category: 'emergency',
     estimatedMinutes: 3,
