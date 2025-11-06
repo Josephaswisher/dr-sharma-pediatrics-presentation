@@ -233,7 +233,7 @@ export const slides: Slide[] = [
       ],
       pearl: 'Ampicillin for neonates covers Listeria (3rd-gen cephalosporins do NOT). This is a classic board question.'
     },
-    speakerNotes: `Key: Age <28 days = ALWAYS full workup including LP. GBS is #1 cause of early-onset sepsis. Remember: neonates cannot localize infections well.`
+    speakerNotes: `Key: Age <28 days = ALWAYS full workup including LP. GBS is #1 cause of early-onset sepsis. Remember: neonates cannot localize infections well. Dr. Sharma's Pearl: Classic exam question AND real management issue. Neonates need ampicillin because Listeria isn't covered by 3rd-gen cephalosporins. Missing this = catastrophic.`
   },
 
   // Slide 7: Congenital Heart Disease
@@ -343,9 +343,9 @@ export const slides: Slide[] = [
         },
         {
           condition: 'Not responding?',
-          action: 'Add ipratropium, IV magnesium (50 mg/kg, max 2g), continuous albuterol',
+          action: 'Add ipratropium, IV magnesium sulfate (50 mg/kg over 20 min, max 2g), continuous albuterol',
           branches: [
-            { label: 'Still not responding', outcome: 'ICU for possible intubation, consider epinephrine' }
+            { label: 'Still not responding', outcome: 'ICU for possible intubation, IV methylprednisolone, consider epinephrine' }
           ]
         }
       ],
@@ -475,7 +475,7 @@ export const slides: Slide[] = [
         highlight: true
       }
     },
-    speakerNotes: `Classic mistake: Rushing to OR without correcting electrolytes. Infant has been vomiting HCl → hypochloremic metabolic alkalosis. Must give IV fluids + potassium repletion before surgery.`
+    speakerNotes: `Classic mistake: Rushing to OR without correcting electrolytes. Infant has been vomiting HCl → hypochloremic metabolic alkalosis. Must give IV fluids + potassium repletion before surgery. Dr. Sharma: 'Pyloric stenosis - I see students rush to OR. STOP. Check K+ after hydration. Rushing with profound hypokalemia = complications.'`
   },
 
   // Slide 15: Intussusception
@@ -511,7 +511,7 @@ export const slides: Slide[] = [
         }
       ]
     },
-    speakerNotes: `Peak age 6-36 months. Lead point in older kids (lymphoma, Meckel diverticulum, polyp). Most idiopathic in infants (hypertrophied Peyer patches post-viral infection). Enema is both diagnostic and therapeutic.`
+    speakerNotes: `Peak age 6-36 months. Lead point in older kids (lymphoma, Meckel diverticulum, polyp). Most idiopathic in infants (hypertrophied Peyer patches post-viral infection). Enema is both diagnostic and therapeutic. Dr. Sharma: 'Intussusception: Classic "currant jelly" stools. 10-month-old with colicky pain → get ultrasound immediately. Don't delay if classic presentation.'`
   },
 
   // Slide 16: Meningitis - Don't Miss This
@@ -687,6 +687,134 @@ export const slides: Slide[] = [
       ]
     },
     speakerNotes: `High-yield for boards and real life. Classic case: infant with "fussiness" and retinal hemorrhages. Always consider abuse in: unexplained injuries, history inconsistent with injury, delay in seeking care. Document objectively, report to CPS.`
+  },
+
+  // NEW Slide 18: Pyloric Stenosis vs Intussusception Comparison
+  {
+    id: 18,
+    title: 'GI Surgical Emergencies: Side-by-Side',
+    subtitle: 'Pyloric Stenosis vs Intussusception',
+    category: 'gi',
+    estimatedMinutes: 3,
+    content: {
+      type: 'two-column',
+      left: {
+        title: 'Pyloric Stenosis',
+        items: [
+          '**Age:** 2-8 weeks (peak 3-5 weeks)',
+          '**Classic:** Non-bilious projectile vomit, hungry immediately after',
+          '**Exam:** Visible peristaltic wave, palpable "olive" (RUQ)',
+          '**Labs:** Hypochloremic metabolic alkalosis (vomiting HCl)',
+          '**Diagnosis:** Abdominal ultrasound (pyloric muscle >3mm)',
+          '**⚠️ CRITICAL:** Correct electrolytes BEFORE surgery!',
+          '**Treatment:** Pyloromyotomy'
+        ],
+        highlight: true
+      },
+      right: {
+        title: 'Intussusception',
+        items: [
+          '**Age:** 6-36 months (peak)',
+          '**Classic:** Colicky pain + vomit + "currant jelly" stools',
+          '**Exam:** RUQ "sausage-shaped" mass (30% palpable)',
+          '**Imaging:** Ultrasound (gold standard: "target sign")',
+          '**Treatment:** Air or hydrostatic enema reduction (non-operative)',
+          '**Pearl:** Don\'t delay if classic presentation',
+          '**Surgical:** Only if perforation signs'
+        ],
+        highlight: true
+      }
+    },
+    speakerNotes: `Two surgical GI emergencies you MUST recognize. Pyloric = electrolytes first. Intussusception = ultrasound urgently, enema is treatment. Both are high-yield for boards and clinical practice.`
+  },
+
+  // NEW Slide 19: Celiac Disease Diagnostic Algorithm
+  {
+    id: 19,
+    title: 'Celiac Disease: 2024 Diagnostic Update',
+    subtitle: 'Streamlined Diagnosis Algorithm',
+    category: 'gi',
+    estimatedMinutes: 3,
+    content: {
+      type: 'algorithm',
+      title: 'Celiac Disease Workup',
+      steps: [
+        {
+          condition: 'STEP 1: Serology (ON REGULAR DIET with gluten)',
+          action: 'Order tTG-IgA, Total IgA, and EMA-IgA',
+          branches: [
+            { label: 'tTG-IgA', outcome: 'Tissue transglutaminase IgA (MOST SENSITIVE)' },
+            { label: 'Total IgA', outcome: 'Rule out IgA deficiency' },
+            { label: 'EMA-IgA', outcome: 'Endomysial antibody for confirmation' }
+          ]
+        },
+        {
+          condition: 'STEP 2: Interpretation',
+          action: 'Determine if biopsy needed',
+          branches: [
+            { label: 'tTG-IgA ≥10x ULN + EMA positive', outcome: '✅ DIAGNOSIS MADE (no biopsy needed) [2024 UPDATE]' },
+            { label: 'Intermediate values OR IgA deficiency', outcome: 'Need endoscopy with duodenal biopsy' },
+            { label: 'Biopsy shows villous atrophy (Marsh grade 3)', outcome: 'Confirms diagnosis' }
+          ]
+        },
+        {
+          condition: 'STEP 3: Management',
+          action: 'Lifelong gluten-free diet + monitoring',
+          branches: [
+            { label: 'Treatment', outcome: 'STRICT gluten-free diet (ONLY effective treatment)' },
+            { label: 'Screening', outcome: 'Check for deficiencies: Iron, B12, folate, vitamins, calcium' },
+            { label: 'Dietitian', outcome: 'Referral ESSENTIAL for family education' },
+            { label: 'Follow-up', outcome: 'Repeat serology 1-2 years (should normalize)' }
+          ]
+        }
+      ],
+      pearl: '2024-2025 update: Can diagnose WITHOUT biopsy if tTG >10x upper limit + EMA positive. Saves endoscopy in clear cases.'
+    },
+    speakerNotes: `New guidelines streamline diagnosis. If serology strongly positive (>10x), no biopsy needed. But strict gluten-free diet is the ONLY treatment. Dietitian essential for family education. Classic presentation: chronic diarrhea, failure to thrive, abdominal distention.`
+  },
+
+  // NEW Slide 20: SVT & Status Epilepticus
+  {
+    id: 20,
+    title: 'Pediatric Emergencies: SVT & Status Epilepticus',
+    subtitle: 'Critical Management Protocols',
+    category: 'emergency',
+    estimatedMinutes: 3,
+    content: {
+      type: 'two-column',
+      left: {
+        title: 'SVT (Supraventricular Tachycardia)',
+        items: [
+          '**Most common pediatric arrhythmia**',
+          '**Presentation:**',
+          '• Infants: Irritability, poor feeding, shock if prolonged',
+          '• Kids: Palpitations, dizziness, chest pain',
+          '**ECG:** Regular narrow-complex tachycardia, no visible P waves',
+          '**Acute Management:**',
+          '1. Vagal maneuvers (Valsalva, ice water for infants)',
+          '2. Adenosine IV: 0.1 mg/kg rapid push → 0.2 mg/kg if fails',
+          '3. Synchronized cardioversion if unstable'
+        ],
+        highlight: true
+      },
+      right: {
+        title: 'Status Epilepticus',
+        items: [
+          '**Definition:** Seizure >5 min OR repeated without baseline return',
+          '**EMERGENCY - High mortality if prolonged**',
+          '**Immediate Actions:**',
+          '1. Position on side (prevent aspiration)',
+          '2. Airway, oxygen',
+          '3. Check glucose STAT (easy to treat)',
+          '4. IV access + labs',
+          '5. First-line: Lorazepam 0.1 mg/kg IV',
+          '6. Second-line: Fosphenytoin or levetiracetam',
+          '7. PICU if refractory'
+        ],
+        highlight: true
+      }
+    },
+    speakerNotes: `Two life-threatening pediatric emergencies requiring immediate action. SVT: Adenosine is diagnostic AND therapeutic - causes transient AV block. Status epilepticus: Don't wait. If seizing >5 min, give benzodiazepine. Prolonged seizures = brain injury risk. Always check glucose - hypoglycemia is easily treatable cause.`
   },
 
   // Slide 21: Key Takeaways - Illustrated Butterfly
