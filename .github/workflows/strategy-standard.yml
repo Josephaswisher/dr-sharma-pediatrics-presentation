@@ -1,0 +1,78 @@
+name: Strategy - Standard Review
+# Uses Sonnet 4.5 for comprehensive code review ($0.08 per review)
+# Standard workflow for most PRs
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      complexity:
+        required: true
+        type: string
+      pr_size:
+        required: true
+        type: string
+
+jobs:
+  sonnet-review:
+    name: Sonnet 4.5 Full Review
+    uses: ./.github/workflows/model-sonnet-4-5.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      mode: 'comprehensive'
+      thinking_level: 'think'
+      focus_areas: 'all'
+    secrets: inherit
+
+  quality-checks:
+    name: Automated Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Run linters
+        run: |
+          # Run language-specific linters
+          if [ -f "package.json" ]; then
+            npm ci
+            npm run lint || true
+          fi
+
+          if [ -f "requirements.txt" ]; then
+            pip install flake8 black
+            flake8 . || true
+            black --check . || true
+          fi
+
+      - name: Security scan
+        run: |
+          # Check for secrets
+          if git diff origin/main... | grep -E '(api[_-]?key|password|secret|token).*=.*["\']'; then
+            echo "::error::Potential secrets detected"
+            exit 1
+          fi
+
+  post-review:
+    name: Post Standard Review
+    needs: [sonnet-review, quality-checks]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download review
+        uses: actions/download-artifact@v4
+        with:
+          name: sonnet-review
+          path: ./review
+
+      - name: Post to PR
+        run: |
+          gh pr comment "${{ inputs.pr_number }}" --body "$(cat ./review/output.md)
+
+          ---
+          ✅ **Standard Review** (Sonnet 4.5) | Cost: ~\$0.08"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

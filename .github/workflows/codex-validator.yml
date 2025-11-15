@@ -1,0 +1,120 @@
+name: Codex Code Validator
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+
+jobs:
+  codex-validate:
+    if: |
+      (github.event_name == 'pull_request') ||
+      (github.event.comment && contains(github.event.comment.body, '/codex-validate'))
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install OpenAI Codex
+        run: |
+          pip install openai
+      
+      - name: Get Changed Files
+        id: changed-files
+        uses: tj-actions/changed-files@v42
+      
+      - name: Run Codex Validation
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          cat > codex_validator.py << 'PYEOF'
+          import os
+          import sys
+          from openai import OpenAI
+          
+          client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+          
+          changed_files = os.environ.get('CHANGED_FILES', '').split()
+          issues = []
+          
+          for filepath in changed_files:
+              if not os.path.exists(filepath):
+                  continue
+              
+              with open(filepath, 'r') as f:
+                  code = f.read()
+              
+              prompt = f"""
+              Analyze this code for:
+              1. Security vulnerabilities
+              2. Performance issues
+              3. Best practice violations
+              4. Potential bugs
+              5. Code quality improvements
+              
+              File: {filepath}
+              
+              ```
+              {code}
+              ```
+              
+              Provide a structured review with severity levels.
+              """
+              
+              response = client.chat.completions.create(
+                  model="gpt-4.1-mini",
+                  messages=[
+                      {"role": "system", "content": "You are an expert code reviewer."},
+                      {"role": "user", "content": prompt}
+                  ]
+              )
+              
+              review = response.choices[0].message.content
+              
+              if "CRITICAL" in review or "HIGH" in review:
+                  issues.append(f"## {filepath}\n\n{review}\n")
+          
+          if issues:
+              with open('validation_report.md', 'w') as f:
+                  f.write("# Codex Validation Report\n\n")
+                  f.write("\n".join(issues))
+              sys.exit(1)
+          else:
+              with open('validation_report.md', 'w') as f:
+                  f.write("# Codex Validation Report\n\n✅ No critical issues found!")
+          PYEOF
+          
+          export CHANGED_FILES="${{ steps.changed-files.outputs.all_changed_files }}"
+          python codex_validator.py || true
+      
+      - name: Post Validation Results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('validation_report.md', 'utf8');
+            
+            if (context.payload.pull_request) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: report
+              });
+            } else if (context.payload.issue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: report
+              });
+            }

@@ -1,0 +1,375 @@
+name: Thinking Mode - Ultra
+# Ultra thinking mode: 'ultrathink' (32000 tokens, 30-60s)
+# Reserved for critical production decisions and complex system changes
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      task_description:
+        required: true
+        type: string
+
+jobs:
+  ultra-thinking:
+    name: Ultra Thinking Review (Opus 4.1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5  # Ultra thinking can take up to 60 seconds
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get maximum context
+        run: |
+          gh pr diff "${{ inputs.pr_number }}" > pr.diff
+          gh pr view "${{ inputs.pr_number }}" --json title,body,files,labels,reviews,comments,additions,deletions,commits > pr-metadata.json
+
+          # Get all file contents
+          FILES=$(jq -r '.files[].path' pr-metadata.json)
+          mkdir -p full-context
+
+          for file in $FILES; do
+            if [ -f "$file" ]; then
+              # Full file content
+              cat "$file" > "full-context/$(basename $file)"
+
+              # Complete git history
+              git log --all --oneline -- "$file" > "full-context/$(basename $file).fullhistory"
+
+              # File blame
+              git blame "$file" > "full-context/$(basename $file).blame" 2>/dev/null || true
+            fi
+          done
+
+          # Get extensive commit context
+          git log --oneline -50 > full-context/recent-commits.txt
+          git log --oneline --all --graph -20 > full-context/branch-structure.txt
+
+          # Get all PR reviews and comments
+          jq -r '.reviews[].body' pr-metadata.json > full-context/previous-reviews.txt 2>/dev/null || echo "" > full-context/previous-reviews.txt
+          jq -r '.comments[].body' pr-metadata.json > full-context/comments.txt 2>/dev/null || echo "" > full-context/comments.txt
+
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build ultrathink prompt
+        run: |
+          cat > prompt.txt << 'EOF'
+          You are Claude Opus 4.1 in ULTRATHINK mode with maximum extended thinking capability.
+
+          **CRITICAL ANALYSIS REQUIRED**
+
+          Task: ${{ inputs.task_description }}
+
+          This is a critical production change that requires your deepest analysis.
+          You have a 32,000 token thinking budget and up to 60 seconds.
+
+          Take all the time you need to think comprehensively about every aspect.
+
+          EOF
+
+          # Add all context
+          cat >> prompt.txt << EOF
+
+          ## Pull Request Overview
+
+          **Title**: $(cat pr-metadata.json | jq -r '.title')
+          **Changes**: $(cat pr-metadata.json | jq -r '"\(.additions) additions, \(.deletions) deletions across \(.files | length) files"')
+          **Labels**: $(cat pr-metadata.json | jq -r '.labels[].name' | tr '\n' ', ')
+          **Commits**: $(cat pr-metadata.json | jq -r '.commits | length')
+
+          **Description**:
+          $(cat pr-metadata.json | jq -r '.body')
+
+          ## Previous Review Feedback
+
+          $(cat full-context/previous-reviews.txt)
+
+          ## Discussion Comments
+
+          $(cat full-context/comments.txt)
+
+          ## Code Changes
+
+          \`\`\`diff
+          $(cat pr.diff)
+          \`\`\`
+
+          ## Full File Contents
+
+          EOF
+
+          # Add all full file contents
+          for file in full-context/*.{js,ts,py,go,rs,java,cpp,c} 2>/dev/null; do
+            if [ -f "$file" ] && [[ ! "$file" =~ \.(history|blame|txt)$ ]]; then
+              BASENAME=$(basename "$file")
+              echo "### File: $BASENAME" >> prompt.txt
+              echo '```' >> prompt.txt
+              cat "$file" >> prompt.txt
+              echo '```' >> prompt.txt
+              echo "" >> prompt.txt
+            fi
+          done
+
+          cat >> prompt.txt << 'EOF'
+
+          ## File History & Evolution
+
+          EOF
+
+          # Add file histories
+          for history in full-context/*.fullhistory; do
+            if [ -f "$history" ]; then
+              echo "### $(basename $history .fullhistory)" >> prompt.txt
+              cat "$history" >> prompt.txt
+              echo "" >> prompt.txt
+            fi
+          done
+
+          cat >> prompt.txt << EOF
+
+          ## Repository Structure
+
+          $(cat full-context/branch-structure.txt)
+
+          ## Recent Development Activity
+
+          $(cat full-context/recent-commits.txt)
+
+          ---
+
+          ## Your Ultra-Deep Analysis Task
+
+          Think deeply and comprehensively. Consider EVERYTHING:
+
+          ### 1. Architecture & System Design (20% of thinking)
+          - How does this change affect the overall system architecture?
+          - What design patterns are being used? Are they appropriate?
+          - How will this scale? What are the scalability implications?
+          - What are the coupling and cohesion implications?
+          - How does this fit with the existing codebase patterns?
+          - What technical debt is being introduced or resolved?
+          - Are there better architectural approaches?
+
+          ### 2. Security Analysis (25% of thinking)
+          - Enumerate ALL potential attack vectors
+          - Authentication and authorization implications
+          - Data validation and sanitization
+          - Injection vulnerabilities (SQL, NoSQL, Command, XSS, etc.)
+          - Cryptographic considerations
+          - Secrets management
+          - API security
+          - Input/output validation
+          - Session management
+          - CSRF, SSRF, XXE vulnerabilities
+          - Dependency vulnerabilities
+
+          ### 3. Performance & Efficiency (15% of thinking)
+          - Time complexity analysis (Big O)
+          - Space complexity analysis
+          - Database query optimization
+          - N+1 query problems
+          - Caching opportunities
+          - Memory leaks or growth patterns
+          - Resource cleanup
+          - Bottleneck identification
+          - Load testing considerations
+
+          ### 4. Reliability & Error Handling (15% of thinking)
+          - All possible error conditions
+          - Edge cases and boundary conditions
+          - Race conditions and concurrency issues
+          - Failure modes and recovery strategies
+          - Data consistency guarantees
+          - Transaction handling
+          - Idempotency concerns
+          - Retry and backoff strategies
+          - Circuit breaker patterns
+
+          ### 5. Testing Strategy (10% of thinking)
+          - What unit tests are needed?
+          - Integration test scenarios
+          - End-to-end test cases
+          - Performance testing requirements
+          - Security testing needs
+          - Edge case coverage
+          - Regression test identification
+          - Test data requirements
+
+          ### 6. Backward Compatibility & Migration (5% of thinking)
+          - Breaking changes
+          - Migration path for existing data/users
+          - Versioning strategy
+          - Deprecation timeline
+          - Rollback procedures
+
+          ### 7. Documentation & Knowledge Transfer (5% of thinking)
+          - What documentation needs updating?
+          - API documentation
+          - Architecture decision records
+          - Runbook updates
+          - Team knowledge sharing
+
+          ### 8. Dependencies & Integration (5% of thinking)
+          - How does this affect other services/modules?
+          - Dependency version conflicts
+          - API contract changes
+          - Third-party integration impacts
+          - Cross-team coordination needs
+
+          ---
+
+          ## Output Format
+
+          Provide your analysis in this structure:
+
+          1. **Executive Summary** (2-3 paragraphs)
+             - Overall assessment
+             - Critical findings
+             - Recommendation (approve/request changes/block)
+
+          2. **Critical Issues** (❌ MUST FIX)
+             - Security vulnerabilities
+             - Critical bugs
+             - Breaking changes
+
+          3. **High Priority Issues** (⚠️ SHOULD FIX)
+             - Performance problems
+             - Design concerns
+             - Missing tests
+
+          4. **Medium Priority Issues** (💡 CONSIDER)
+             - Code quality improvements
+             - Refactoring opportunities
+             - Documentation gaps
+
+          5. **Recommendations**
+             - Specific, actionable changes
+             - Code examples where helpful
+             - Alternative approaches
+
+          6. **Positive Aspects**
+             - What was done well
+             - Good patterns used
+             - Improvements made
+
+          7. **Testing Checklist**
+             - [ ] Specific test cases to implement
+
+          8. **Migration Plan** (if applicable)
+             - Step-by-step migration strategy
+             - Rollback procedure
+
+          Take your time. Think deeply. Be thorough. This is critical production code.
+          EOF
+
+      - name: Execute Opus 4.1 with Ultrathink
+        run: |
+          echo "Starting Opus 4.1 Ultrathink analysis (this may take 30-60 seconds)..."
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+            -H "anthropic-version: 2023-06-01" \
+            -d @- << EOFAPI
+          {
+            "model": "claude-opus-4-1-20250805",
+            "max_tokens": 32768,
+            "messages": [{
+              "role": "user",
+              "content": "$(cat prompt.txt | jq -Rs .)"
+            }]
+          }
+          EOFAPI
+          )
+
+          echo "$RESPONSE" | jq -r '.content[0].text' > review.md
+
+          # Calculate cost
+          INPUT=$(echo "$RESPONSE" | jq -r '.usage.input_tokens')
+          OUTPUT=$(echo "$RESPONSE" | jq -r '.usage.output_tokens')
+          COST=$(echo "scale=4; ($INPUT * 15 + $OUTPUT * 75) / 1000000" | bc)
+
+          echo "$COST" > cost.txt
+
+          echo "Ultrathink analysis complete."
+          echo "Input tokens: $INPUT"
+          echo "Output tokens: $OUTPUT"
+          echo "Cost: \$$COST"
+
+      - name: Format ultra review
+        run: |
+          cat > final-review.md << 'EOF'
+          # 🧠💎 ULTRATHINK Analysis
+          ## Claude Opus 4.1 - Maximum Extended Thinking
+
+          **Thinking Budget**: 32,000 tokens
+          **Processing Time**: 30-60 seconds
+          **Analysis Depth**: MAXIMUM - Critical production review
+
+          ---
+
+          EOF
+
+          cat review.md >> final-review.md
+
+          cat >> final-review.md << 'EOF'
+
+          ---
+
+          ## 📊 Analysis Metadata
+
+          **Model**: Claude Opus 4.1 (claude-opus-4-1-20250805)
+          **Thinking Mode**: ULTRATHINK (maximum capability)
+          **Review Type**: Critical production change analysis
+
+          This is the most comprehensive AI review available. All recommendations should be carefully considered.
+
+          EOF
+
+      - name: Create action items
+        run: |
+          # Extract critical and high priority items
+          grep -A5 "Critical Issues\|High Priority" final-review.md | \
+            grep "^-" | \
+            sed 's/^/- [ ] /' > action-items.md || echo "No critical items" > action-items.md
+
+          cat >> final-review.md << 'EOF'
+
+          ## ✅ Action Items Checklist
+
+          EOF
+
+          cat action-items.md >> final-review.md
+
+      - name: Upload review
+        uses: actions/upload-artifact@v4
+        with:
+          name: thinking-ultra-review
+          path: |
+            final-review.md
+            cost.txt
+
+      - name: Post to PR
+        run: |
+          gh pr comment "${{ inputs.pr_number }}" \
+            --body "$(cat final-review.md)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for critical issues
+        run: |
+          if grep -q "❌ MUST FIX" final-review.md; then
+            echo "::error::Critical issues found in ultrathink analysis"
+
+            # Request changes on PR
+            gh pr review "${{ inputs.pr_number }}" --request-changes \
+              --body "🧠💎 Ultrathink analysis found critical issues that must be addressed. See detailed review above."
+
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

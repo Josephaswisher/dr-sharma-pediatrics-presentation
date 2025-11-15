@@ -1,0 +1,47 @@
+name: Strategy - Fast Draft
+# Uses Haiku 4.5 for quick draft PR reviews ($0.003 per review)
+# Optimized for WIP/draft PRs with minimal changes
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      complexity:
+        required: true
+        type: string
+      pr_size:
+        required: true
+        type: string
+
+jobs:
+  haiku-review:
+    name: Haiku 4.5 Quick Review
+    uses: ./.github/workflows/model-haiku-4-5.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      mode: 'fast'
+      thinking_level: 'none'
+      focus_areas: 'syntax,basic-logic,style'
+    secrets: inherit
+
+  post-review:
+    name: Post Draft Review
+    needs: haiku-review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download review
+        uses: actions/download-artifact@v4
+        with:
+          name: haiku-review
+          path: ./review
+
+      - name: Post to PR
+        run: |
+          gh pr comment "${{ inputs.pr_number }}" --body "$(cat ./review/output.md)
+
+          ---
+          💡 **Draft Review** (Haiku 4.5) | Cost: ~\$0.003 | Use \`/ai-standard\` for full review"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

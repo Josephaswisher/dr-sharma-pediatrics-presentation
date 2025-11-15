@@ -1,0 +1,182 @@
+name: Aggregator - Security Findings
+# Combines security reports from multiple AI models
+# Deduplicates findings, prioritizes by severity, provides unified view
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+
+jobs:
+  aggregate-security:
+    name: Aggregate Security Findings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all security reviews
+        uses: actions/download-artifact@v4
+        with:
+          path: ./reviews
+
+      - name: Install analysis tools
+        run: |
+          pip install pyyaml
+
+      - name: Aggregate findings
+        run: |
+          cat > aggregate.py << 'EOF'
+          import json
+          import re
+          from pathlib import Path
+          from collections import defaultdict
+
+          # Severity patterns
+          SEVERITY_PATTERNS = {
+              'CRITICAL': r'\b(critical|severe|dangerous|exploit)\b',
+              'HIGH': r'\b(high|serious|important|vulnerability)\b',
+              'MEDIUM': r'\b(medium|moderate|warning)\b',
+              'LOW': r'\b(low|minor|info|notice)\b'
+          }
+
+          # Common vulnerability patterns
+          VULN_PATTERNS = {
+              'SQL Injection': r'\b(sql.*injection|sqlmap|union.*select)\b',
+              'XSS': r'\b(xss|cross.*site.*script|innerHTML|dangerouslySetInnerHTML)\b',
+              'CSRF': r'\b(csrf|cross.*site.*request.*forgery)\b',
+              'Auth Issues': r'\b(auth|authentication|authorization|jwt|token)\b',
+              'Secrets': r'\b(api.*key|password|secret|token|credential)\b',
+              'Injection': r'\b(injection|eval|exec|system|shell)\b',
+              'Data Leak': r'\b(leak|expose|disclosure|sensitive)\b',
+              'Crypto': r'\b(crypto|encryption|hash|md5|sha1|weak)\b'
+          }
+
+          findings = defaultdict(list)
+          costs = []
+
+          # Process all review files
+          for review_file in Path('./reviews').rglob('*.md'):
+              content = review_file.read_text()
+              model = review_file.parent.name
+
+              # Extract findings
+              for vuln_type, pattern in VULN_PATTERNS.items():
+                  matches = re.finditer(pattern, content, re.IGNORECASE)
+                  for match in matches:
+                      # Get surrounding context
+                      start = max(0, match.start() - 100)
+                      end = min(len(content), match.end() + 100)
+                      context = content[start:end]
+
+                      # Determine severity
+                      severity = 'MEDIUM'
+                      for sev, sev_pattern in SEVERITY_PATTERNS.items():
+                          if re.search(sev_pattern, context, re.IGNORECASE):
+                              severity = sev
+                              break
+
+                      findings[vuln_type].append({
+                          'model': model,
+                          'severity': severity,
+                          'context': context.strip(),
+                          'line': content[:match.start()].count('\n') + 1
+                      })
+
+          # Read costs
+          for cost_file in Path('./reviews').rglob('cost.txt'):
+              costs.append(float(cost_file.read_text().strip()))
+
+          # Generate aggregated report
+          output = ["# 🔒 Security Analysis - Aggregated Findings\n"]
+          output.append(f"**Models**: {len(list(Path('./reviews').glob('*-review')))} ")
+          output.append(f"| **Total Cost**: ${sum(costs):.4f}\n\n")
+
+          # Summary by severity
+          severity_count = defaultdict(int)
+          for vuln_type, items in findings.items():
+              for item in items:
+                  severity_count[item['severity']] += 1
+
+          output.append("## Severity Summary\n\n")
+          for severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']:
+              count = severity_count[severity]
+              if count > 0:
+                  emoji = {'CRITICAL': '🚨', 'HIGH': '⚠️', 'MEDIUM': '⚡', 'LOW': 'ℹ️'}[severity]
+                  output.append(f"- {emoji} **{severity}**: {count} findings\n")
+
+          output.append("\n---\n\n")
+
+          # Detailed findings by vulnerability type
+          output.append("## Detailed Findings\n\n")
+
+          for vuln_type in sorted(findings.keys(), key=lambda x: len(findings[x]), reverse=True):
+              items = findings[vuln_type]
+              if not items:
+                  continue
+
+              output.append(f"### {vuln_type} ({len(items)} findings)\n\n")
+
+              # Deduplicate similar findings
+              unique_findings = []
+              for item in items:
+                  # Simple deduplication by context similarity
+                  is_duplicate = False
+                  for existing in unique_findings:
+                      if existing['context'][:50] == item['context'][:50]:
+                          existing['models'].append(item['model'])
+                          is_duplicate = True
+                          break
+
+                  if not is_duplicate:
+                      item['models'] = [item['model']]
+                      unique_findings.append(item)
+
+              # Sort by severity
+              severity_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}
+              unique_findings.sort(key=lambda x: severity_order[x['severity']])
+
+              for finding in unique_findings:
+                  severity_emoji = {'CRITICAL': '🚨', 'HIGH': '⚠️', 'MEDIUM': '⚡', 'LOW': 'ℹ️'}[finding['severity']]
+                  models = ', '.join(set(finding['models']))
+
+                  output.append(f"**{severity_emoji} {finding['severity']}** (detected by: {models})\n\n")
+                  output.append(f"```\n{finding['context']}\n```\n\n")
+
+              output.append("\n")
+
+          # Recommendations
+          output.append("## 🛡️ Recommendations\n\n")
+
+          if severity_count['CRITICAL'] > 0:
+              output.append("1. **IMMEDIATE ACTION REQUIRED**: Address all CRITICAL findings before merging\n")
+          if severity_count['HIGH'] > 0:
+              output.append("2. **HIGH PRIORITY**: Review and fix HIGH severity issues\n")
+          if severity_count['MEDIUM'] > 0:
+              output.append("3. **MEDIUM PRIORITY**: Consider addressing MEDIUM issues in this PR or create follow-up issues\n")
+
+          output.append("\n---\n\n")
+          output.append("*This report aggregates findings from multiple AI security models for comprehensive coverage.*\n")
+
+          Path('aggregated-security.md').write_text(''.join(output))
+
+          # Exit with error if critical findings
+          if severity_count['CRITICAL'] > 0:
+              exit(1)
+          EOF
+
+          python aggregate.py
+
+      - name: Upload aggregated report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-aggregate
+          path: aggregated-security.md
+
+      - name: Post summary
+        run: |
+          gh pr comment "${{ inputs.pr_number }}" \
+            --body "$(cat aggregated-security.md)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

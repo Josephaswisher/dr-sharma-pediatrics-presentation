@@ -1,0 +1,90 @@
+name: Strategy - Deep Analysis
+# Large refactors with full context analysis ($0.25 per review)
+# Uses Sonnet 4.5 + GPT-4.1 (1M context window)
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      complexity:
+        required: true
+        type: string
+      pr_size:
+        required: true
+        type: string
+
+jobs:
+  # Parallel deep analysis
+  sonnet-deep:
+    name: Sonnet 4.5 Deep Review
+    uses: ./.github/workflows/model-sonnet-4-5.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      mode: 'deep-analysis'
+      thinking_level: 'think-harder'
+      focus_areas: 'architecture,patterns,maintainability,performance'
+    secrets: inherit
+
+  gpt-context:
+    name: GPT-4.1 Full Context Analysis
+    uses: ./.github/workflows/model-gpt-4-1.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      mode: 'full-context'
+      thinking_level: 'think'
+      focus_areas: 'cross-file-impact,refactoring-suggestions,dependency-analysis'
+    secrets: inherit
+
+  aggregate-analysis:
+    name: Aggregate Deep Analysis
+    needs: [sonnet-deep, gpt-context]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download reviews
+        uses: actions/download-artifact@v4
+        with:
+          path: ./reviews
+
+      - name: Combine insights
+        run: |
+          cat > combined.md << 'EOF'
+          # 🔍 Deep Analysis Results
+
+          ## Architecture Review (Sonnet 4.5)
+          EOF
+
+          cat ./reviews/sonnet-review/output.md >> combined.md
+
+          cat >> combined.md << 'EOF'
+
+          ## Full Context Analysis (GPT-4.1)
+          EOF
+
+          cat ./reviews/gpt-review/output.md >> combined.md
+
+          cat >> combined.md << 'EOF'
+
+          ## Recommendations
+
+          Based on analysis from both models:
+          EOF
+
+          # Extract common recommendations
+          grep -h "^-" ./reviews/*/output.md | sort | uniq -c | sort -rn | head -10 >> combined.md
+
+      - name: Upload combined review
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-analysis
+          path: combined.md
+
+      - name: Post to PR
+        run: |
+          gh pr comment "${{ inputs.pr_number }}" --body "$(cat combined.md)
+
+          ---
+          🔍 **Deep Analysis** (2 models) | Cost: ~\$0.25 | PR size: ${{ inputs.pr_size }} lines"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

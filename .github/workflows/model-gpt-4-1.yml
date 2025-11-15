@@ -1,0 +1,135 @@
+name: Model - GPT-4.1
+# Executor for GPT-4.1 (1M context window)
+# Context: 1M | Cost: $2.50/$10 per 1M tokens
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      mode:
+        required: true
+        type: string
+      thinking_level:
+        required: true
+        type: string
+      focus_areas:
+        required: true
+        type: string
+
+jobs:
+  gpt-review:
+    name: Execute GPT-4.1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get full repository context
+        run: |
+          # For GPT-4.1's 1M context, include entire codebase
+          gh pr diff "${{ inputs.pr_number }}" > pr.diff
+          gh pr view "${{ inputs.pr_number }}" --json title,body,files > pr-metadata.json
+
+          # Get all related files for context
+          FILES=$(jq -r '.files[].path' pr-metadata.json)
+
+          # Gather full file contents
+          mkdir -p context
+          for file in $FILES; do
+            if [ -f "$file" ]; then
+              cp "$file" "context/$(basename $file)"
+            fi
+          done
+
+          # Get recent commit history for context
+          git log --oneline -20 > context/recent-commits.txt
+
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build comprehensive prompt
+        run: |
+          cat > prompt.txt << EOF
+          You are GPT-4.1 with 1 million token context window.
+
+          **Review Mode**: ${{ inputs.mode }}
+          **Focus**: ${{ inputs.focus_areas }}
+
+          **Task**: Analyze this PR with full repository context.
+
+          **PR Details:**
+          $(cat pr-metadata.json | jq -r '"\(.title)\n\n\(.body)"')
+
+          **Recent Commits:**
+          $(cat context/recent-commits.txt)
+
+          **Full File Contents:**
+          EOF
+
+          # Add full file contents
+          for file in context/*; do
+            if [ -f "$file" ]; then
+              echo "\n\n### File: $(basename $file)" >> prompt.txt
+              echo "\`\`\`" >> prompt.txt
+              cat "$file" >> prompt.txt
+              echo "\`\`\`" >> prompt.txt
+            fi
+          done
+
+          cat >> prompt.txt << EOF
+
+          **Code Diff:**
+          \`\`\`diff
+          $(cat pr.diff)
+          \`\`\`
+
+          With this full context, analyze:
+          1. **Cross-file Impact**: How do these changes affect other parts of the codebase?
+          2. **Refactoring Opportunities**: What could be improved based on patterns?
+          3. **Dependency Analysis**: Impact on imports, dependencies, coupling
+          4. **Historical Context**: How does this fit with recent development direction?
+          5. **Comprehensive Recommendations**: Actionable suggestions with full context
+
+          Leverage your 1M context window to provide insights impossible with smaller windows.
+          EOF
+
+      - name: Call GPT-4.1 API
+        run: |
+          RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
+            -d @- << EOF
+          {
+            "model": "gpt-4.1",
+            "messages": [{
+              "role": "system",
+              "content": "You are an expert code reviewer with access to full repository context."
+            }, {
+              "role": "user",
+              "content": "$(cat prompt.txt | jq -Rs .)"
+            }],
+            "max_tokens": 8000
+          }
+          EOF
+          )
+
+          echo "$RESPONSE" | jq -r '.choices[0].message.content' > review.md
+
+          # Calculate cost ($2.50/$10 per 1M tokens)
+          INPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.prompt_tokens')
+          OUTPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.completion_tokens')
+          COST=$(echo "scale=4; ($INPUT_TOKENS * 2.5 + $OUTPUT_TOKENS * 10) / 1000000" | bc)
+          echo "$COST" > cost.txt
+          echo "model=gpt-4.1" > model.txt
+
+      - name: Upload review artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpt-review
+          path: |
+            review.md
+            cost.txt
+            model.txt

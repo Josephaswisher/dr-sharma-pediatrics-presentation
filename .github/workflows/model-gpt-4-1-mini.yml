@@ -1,0 +1,115 @@
+name: Model - GPT-4.1 Mini
+# Executor for GPT-4.1 Mini (beats GPT-4o, 83% cheaper)
+# Context: 128K | Cost: $0.15/$0.60 per 1M tokens
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      mode:
+        required: true
+        type: string
+      thinking_level:
+        required: true
+        type: string
+      focus_areas:
+        required: true
+        type: string
+
+jobs:
+  gpt-mini-review:
+    name: Execute GPT-4.1 Mini
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        run: |
+          gh pr diff "${{ inputs.pr_number }}" > pr.diff
+          gh pr view "${{ inputs.pr_number }}" --json title,body,labels > pr-metadata.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build focused prompt
+        run: |
+          FOCUS=""
+          if [[ "${{ inputs.mode }}" == "security-scan" ]]; then
+            FOCUS="Focus on known vulnerabilities, CVEs, and security best practices."
+          else
+            FOCUS="Focus on: ${{ inputs.focus_areas }}"
+          fi
+
+          cat > prompt.txt << EOF
+          Fast, efficient code review.
+
+          **Mode**: ${{ inputs.mode }}
+          **Focus**: ${FOCUS}
+
+          **PR**: $(cat pr-metadata.json | jq -r '.title')
+          **Labels**: $(cat pr-metadata.json | jq -r '.labels[].name' | tr '\n' ', ')
+
+          **Changes:**
+          \`\`\`diff
+          $(cat pr.diff)
+          \`\`\`
+
+          Check for:
+          1. Common security vulnerabilities (injection, XSS, CSRF, secrets)
+          2. Known CVEs in dependencies
+          3. Authentication/authorization issues
+          4. Data validation gaps
+          5. Error handling weaknesses
+
+          Provide concise, actionable findings.
+          EOF
+
+      - name: Call GPT-4.1 Mini API
+        run: |
+          RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
+            -d @- << EOF
+          {
+            "model": "gpt-4.1-mini",
+            "messages": [{
+              "role": "system",
+              "content": "You are a security-focused code reviewer."
+            }, {
+              "role": "user",
+              "content": "$(cat prompt.txt | jq -Rs .)"
+            }],
+            "max_tokens": 4000
+          }
+          EOF
+          )
+
+          echo "$RESPONSE" | jq -r '.choices[0].message.content' > review.md
+
+          # Calculate cost ($0.15/$0.60 per 1M tokens)
+          INPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.prompt_tokens')
+          OUTPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.completion_tokens')
+          COST=$(echo "scale=5; ($INPUT_TOKENS * 0.15 + $OUTPUT_TOKENS * 0.60) / 1000000" | bc)
+          echo "$COST" > cost.txt
+          echo "model=gpt-4.1-mini" > model.txt
+
+      - name: Format security findings
+        run: |
+          cat > output.md << 'EOF'
+          ## 🔐 Security Scan (GPT-4.1 Mini)
+
+          EOF
+          cat review.md >> output.md
+
+      - name: Upload review artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpt-mini-review
+          path: |
+            output.md
+            review.md
+            cost.txt
+            model.txt

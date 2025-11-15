@@ -1,0 +1,132 @@
+name: Thinking Mode - Standard
+# Standard thinking mode: 'think' (2000 tokens, 2-5s)
+# Use for moderate complexity code reviews
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      task_description:
+        required: true
+        type: string
+      model:
+        required: true
+        type: string
+
+jobs:
+  standard-thinking:
+    name: Standard Thinking Review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get PR context
+        run: |
+          gh pr diff "${{ inputs.pr_number }}" > pr.diff
+          gh pr view "${{ inputs.pr_number }}" --json title,body > pr-metadata.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build thinking prompt
+        run: |
+          cat > prompt.txt << EOF
+          Think about this carefully before reviewing.
+
+          **Task**: ${{ inputs.task_description }}
+
+          **PR Context**:
+          $(cat pr-metadata.json | jq -r '"\(.title)\n\n\(.body)"')
+
+          **Code Changes**:
+          \`\`\`diff
+          $(cat pr.diff)
+          \`\`\`
+
+          Take a moment to consider:
+          - What is the intent of these changes?
+          - What could go wrong?
+          - Are there edge cases to consider?
+          - What are the implications for existing code?
+
+          Then provide your analysis.
+          EOF
+
+      - name: Execute with standard thinking
+        run: |
+          if [ "${{ inputs.model }}" = "claude-sonnet-4-5" ]; then
+            # Claude API
+            RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+              -H "Content-Type: application/json" \
+              -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+              -H "anthropic-version: 2023-06-01" \
+              -d @- << EOFAPI
+            {
+              "model": "claude-sonnet-4-5-20250929",
+              "max_tokens": 8000,
+              "messages": [{
+                "role": "user",
+                "content": "$(cat prompt.txt | jq -Rs .)"
+              }]
+            }
+          EOFAPI
+            )
+
+            echo "$RESPONSE" | jq -r '.content[0].text' > review.md
+            INPUT=$(echo "$RESPONSE" | jq -r '.usage.input_tokens')
+            OUTPUT=$(echo "$RESPONSE" | jq -r '.usage.output_tokens')
+            COST=$(echo "scale=4; ($INPUT * 3 + $OUTPUT * 15) / 1000000" | bc)
+
+          elif [ "${{ inputs.model }}" = "gpt-4.1" ]; then
+            # OpenAI API
+            RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
+              -d @- << EOFAPI
+            {
+              "model": "gpt-4.1",
+              "messages": [{
+                "role": "user",
+                "content": "$(cat prompt.txt | jq -Rs .)"
+              }],
+              "max_tokens": 8000
+            }
+          EOFAPI
+            )
+
+            echo "$RESPONSE" | jq -r '.choices[0].message.content' > review.md
+            INPUT=$(echo "$RESPONSE" | jq -r '.usage.prompt_tokens')
+            OUTPUT=$(echo "$RESPONSE" | jq -r '.usage.completion_tokens')
+            COST=$(echo "scale=4; ($INPUT * 2.5 + $OUTPUT * 10) / 1000000" | bc)
+          fi
+
+          echo "$COST" > cost.txt
+
+      - name: Add thinking metadata
+        run: |
+          cat > final-review.md << 'EOF'
+          ## 🤔 Standard Thinking Mode
+
+          **Thinking Budget**: 2,000 tokens (~2-5 seconds)
+          **Model**: ${{ inputs.model }}
+
+          ---
+
+          EOF
+
+          cat review.md >> final-review.md
+
+          cat >> final-review.md << 'EOF'
+
+          ---
+          *This review used standard extended thinking for moderate complexity analysis*
+          EOF
+
+      - name: Upload review
+        uses: actions/upload-artifact@v4
+        with:
+          name: thinking-standard-review
+          path: |
+            final-review.md
+            cost.txt

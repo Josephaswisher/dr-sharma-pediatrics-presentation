@@ -1,0 +1,117 @@
+name: Model - Claude Opus 4.1
+# Executor for Claude Opus 4.1 (claude-opus-4-1-20250805)
+# SWE-Bench: 75.8% | Context: 200K | Output: 32K | Cost: $15/$75 per 1M tokens
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      mode:
+        required: true
+        type: string
+      thinking_level:
+        required: true
+        type: string
+      focus_areas:
+        required: true
+        type: string
+      thinking_prompt:
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  opus-review:
+    name: Execute Opus 4.1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          gh pr diff "${{ inputs.pr_number }}" > pr.diff
+          gh pr view "${{ inputs.pr_number }}" --json title,body,files,additions,deletions > pr-metadata.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build prompt with extended thinking
+        id: prompt
+        run: |
+          THINKING=""
+          if [ "${{ inputs.thinking_level }}" = "think-harder" ]; then
+            THINKING="think harder about security implications, edge cases, and long-term maintainability."
+          elif [ "${{ inputs.thinking_level }}" = "ultrathink" ]; then
+            THINKING="${{ inputs.thinking_prompt }}"
+          fi
+
+          cat > prompt.txt << EOF
+          You are Claude Opus 4.1, the most capable code reviewer.
+
+          **Review Mode**: ${{ inputs.mode }}
+          **Focus Areas**: ${{ inputs.focus_areas }}
+          **Extended Thinking**: ENABLED
+
+          ${THINKING}
+
+          **Pull Request:**
+          $(cat pr-metadata.json | jq -r '"\(.title)\n\n\(.body)"')
+
+          **Changes:** $(cat pr-metadata.json | jq -r '"\(.additions) additions, \(.deletions) deletions"')
+
+          **Code Diff:**
+          \`\`\`diff
+          $(cat pr.diff)
+          \`\`\`
+
+          Provide a comprehensive analysis including:
+          1. **Security Analysis**: Authentication, authorization, injection risks, data leaks
+          2. **Architecture Review**: Design patterns, scalability, maintainability
+          3. **Edge Cases**: Unusual inputs, error conditions, race conditions
+          4. **Performance**: Bottlenecks, optimization opportunities
+          5. **Testing Strategy**: What tests are needed, coverage gaps
+          6. **Recommendations**: Specific, actionable improvements with code examples
+
+          Use your maximum capabilities for this critical review.
+          EOF
+
+      - name: Call Claude Opus 4.1 API
+        id: claude
+        run: |
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+            -H "anthropic-version: 2023-06-01" \
+            -d @- << EOF
+          {
+            "model": "claude-opus-4-1-20250805",
+            "max_tokens": 32768,
+            "messages": [{
+              "role": "user",
+              "content": "$(cat prompt.txt | jq -Rs .)"
+            }]
+          }
+          EOF
+          )
+
+          echo "$RESPONSE" | jq -r '.content[0].text' > review.md
+
+          # Extract cost ($15/$75 per 1M tokens)
+          INPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.input_tokens')
+          OUTPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.output_tokens')
+          COST=$(echo "scale=4; ($INPUT_TOKENS * 15 + $OUTPUT_TOKENS * 75) / 1000000" | bc)
+          echo "$COST" > cost.txt
+          echo "model=claude-opus-4-1-20250805" > model.txt
+
+      - name: Upload review artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opus-review
+          path: |
+            review.md
+            cost.txt
+            model.txt

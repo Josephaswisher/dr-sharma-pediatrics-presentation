@@ -1,0 +1,103 @@
+name: Strategy - Ultrathink
+# Maximum extended thinking for critical decisions ($0.50 per review)
+# Uses Opus 4.1 with 32K token thinking budget
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      complexity:
+        required: true
+        type: string
+      pr_size:
+        required: true
+        type: string
+
+jobs:
+  opus-ultrathink:
+    name: Opus 4.1 Ultrathink Analysis
+    uses: ./.github/workflows/model-opus-4-1.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      mode: 'ultrathink'
+      thinking_level: 'ultrathink'
+      focus_areas: 'all'
+      thinking_prompt: |
+        Think deeply and comprehensively about this code change.
+
+        Consider:
+        1. Architecture implications (scalability, maintainability, extensibility)
+        2. Security ramifications (attack vectors, data protection, authentication)
+        3. Performance impact (time complexity, space complexity, bottlenecks)
+        4. Edge cases and failure modes
+        5. Testing strategy (what could break, coverage gaps)
+        6. Long-term technical debt implications
+        7. Alternative approaches and trade-offs
+        8. Cross-cutting concerns (logging, monitoring, error handling)
+        9. Backward compatibility and migration path
+        10. Integration with existing systems
+
+        Provide actionable recommendations with specific code examples.
+    secrets: inherit
+
+  post-review:
+    name: Post Ultrathink Review
+    needs: opus-ultrathink
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download review
+        uses: actions/download-artifact@v4
+        with:
+          name: opus-review
+          path: ./review
+
+      - name: Extract key insights
+        run: |
+          cat > summary.md << 'EOF'
+          # 🧠 Ultrathink Analysis (Opus 4.1)
+
+          > **Extended Thinking**: 32,000 token budget | ~60 seconds processing
+
+          EOF
+
+          cat ./review/output.md >> summary.md
+
+          cat >> summary.md << 'EOF'
+
+          ---
+
+          ## Summary of Recommendations
+
+          EOF
+
+          # Extract action items
+          grep -A2 "##" ./review/output.md | grep "^-" >> summary.md || echo "No specific recommendations" >> summary.md
+
+      - name: Post to PR
+        run: |
+          gh pr comment "${{ inputs.pr_number }}" --body "$(cat summary.md)
+
+          ---
+          🧠 **Ultrathink Analysis** (Opus 4.1 + Extended Thinking) | Cost: ~\$0.50
+
+          This is the most comprehensive review available. Consider all recommendations carefully."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create review checklist
+        run: |
+          cat > checklist.md << 'EOF'
+          ## 📋 Action Items Checklist
+
+          Based on the ultrathink analysis, please address:
+
+          EOF
+
+          grep "TODO\|FIXME\|RECOMMEND" ./review/output.md | \
+            sed 's/^/- [ ] /' >> checklist.md
+
+          gh pr comment "${{ inputs.pr_number }}" --body "$(cat checklist.md)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,105 @@
+name: Strategy - Critical Security
+# Multi-model security analysis ($0.35 per review)
+# Uses Opus 4.1 + Sonnet 4.5 + GPT-4.1 Mini in parallel
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      complexity:
+        required: true
+        type: string
+      pr_size:
+        required: true
+        type: string
+
+jobs:
+  # Parallel security analysis with 3 models
+  opus-security:
+    name: Opus 4.1 Security Analysis
+    uses: ./.github/workflows/model-opus-4-1.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      mode: 'security-focused'
+      thinking_level: 'think-harder'
+      focus_areas: 'security,vulnerabilities,auth,injection'
+    secrets: inherit
+
+  sonnet-security:
+    name: Sonnet 4.5 Security Analysis
+    uses: ./.github/workflows/model-sonnet-4-5.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      mode: 'security-focused'
+      thinking_level: 'think'
+      focus_areas: 'security,data-validation,crypto'
+    secrets: inherit
+
+  gpt-mini-security:
+    name: GPT-4.1 Mini Security Scan
+    uses: ./.github/workflows/model-gpt-4-1-mini.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      mode: 'security-scan'
+      thinking_level: 'none'
+      focus_areas: 'known-vulnerabilities,cve,dependency-check'
+    secrets: inherit
+
+  aggregate-security:
+    name: Aggregate Security Findings
+    needs: [opus-security, sonnet-security, gpt-mini-security]
+    uses: ./.github/workflows/aggregator-security.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+    secrets: inherit
+
+  post-review:
+    name: Post Security Review
+    needs: aggregate-security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download aggregated review
+        uses: actions/download-artifact@v4
+        with:
+          name: security-aggregate
+          path: ./review
+
+      - name: Check for critical findings
+        id: check
+        run: |
+          CRITICAL=$(grep -c "CRITICAL" ./review/output.md || echo 0)
+          HIGH=$(grep -c "HIGH" ./review/output.md || echo 0)
+
+          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "high=$HIGH" >> $GITHUB_OUTPUT
+
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::$CRITICAL critical security issues found"
+          fi
+
+      - name: Post to PR
+        run: |
+          EMOJI="🔒"
+          if [ "${{ steps.check.outputs.critical }}" -gt 0 ]; then
+            EMOJI="🚨"
+          fi
+
+          gh pr comment "${{ inputs.pr_number }}" --body "$EMOJI **Security Analysis** (3 models)
+
+          $(cat ./review/output.md)
+
+          ---
+          **Critical**: ${{ steps.check.outputs.critical }} | **High**: ${{ steps.check.outputs.high }}
+          Models: Opus 4.1, Sonnet 4.5, GPT-4.1 Mini | Cost: ~\$0.35"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Block merge if critical
+        if: steps.check.outputs.critical > 0
+        run: |
+          gh pr review "${{ inputs.pr_number }}" --request-changes \
+            --body "🚨 Blocking merge: ${{ steps.check.outputs.critical }} critical security issues must be resolved."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

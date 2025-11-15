@@ -1,0 +1,120 @@
+name: Model - Claude Sonnet 4.5
+# Executor for Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
+# SWE-Bench: 77.2% | Context: 200K | Output: 16K | Cost: $3/$15 per 1M tokens
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      mode:
+        required: true
+        type: string
+      thinking_level:
+        required: true
+        type: string
+      focus_areas:
+        required: true
+        type: string
+      thinking_prompt:
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  sonnet-review:
+    name: Execute Sonnet 4.5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          gh pr diff "${{ inputs.pr_number }}" > pr.diff
+          gh pr view "${{ inputs.pr_number }}" --json title,body,files > pr-metadata.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build prompt
+        id: prompt
+        run: |
+          THINKING=""
+          if [ "${{ inputs.thinking_level }}" = "think" ]; then
+            THINKING="think about this carefully before reviewing."
+          elif [ "${{ inputs.thinking_level }}" = "think-harder" ]; then
+            THINKING="think harder about the implications and edge cases."
+          elif [ "${{ inputs.thinking_level }}" = "ultrathink" ]; then
+            THINKING="${{ inputs.thinking_prompt }}"
+          fi
+
+          cat > prompt.txt << EOF
+          You are an expert code reviewer analyzing a GitHub pull request.
+
+          **Review Mode**: ${{ inputs.mode }}
+          **Focus Areas**: ${{ inputs.focus_areas }}
+
+          ${THINKING}
+
+          **Pull Request Details:**
+          $(cat pr-metadata.json | jq -r '.title')
+
+          $(cat pr-metadata.json | jq -r '.body')
+
+          **Code Changes:**
+          \`\`\`diff
+          $(cat pr.diff)
+          \`\`\`
+
+          Provide a comprehensive code review covering:
+          1. Code quality and best practices
+          2. Potential bugs or issues
+          3. Security considerations
+          4. Performance implications
+          5. Suggested improvements
+
+          Format your response in Markdown with clear sections.
+          EOF
+
+      - name: Call Claude Sonnet 4.5 API
+        id: claude
+        run: |
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+            -H "anthropic-version: 2023-06-01" \
+            -d @- << EOF
+          {
+            "model": "claude-sonnet-4-5-20250929",
+            "max_tokens": 16384,
+            "messages": [{
+              "role": "user",
+              "content": "$(cat prompt.txt | jq -Rs .)"
+            }]
+          }
+          EOF
+          )
+
+          echo "$RESPONSE" | jq -r '.content[0].text' > review.md
+
+          # Extract cost
+          INPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.input_tokens')
+          OUTPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.output_tokens')
+
+          # Calculate cost ($3/$15 per 1M tokens)
+          COST=$(echo "scale=4; ($INPUT_TOKENS * 3 + $OUTPUT_TOKENS * 15) / 1000000" | bc)
+          echo "$COST" > cost.txt
+
+          echo "model=claude-sonnet-4-5-20250929" > model.txt
+
+      - name: Upload review artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonnet-review
+          path: |
+            review.md
+            cost.txt
+            model.txt

@@ -1,0 +1,225 @@
+name: AI Orchestrator v3 (2025)
+# Root orchestrator using 2025's 10-level nested workflow support
+# Detects PR/issue type and routes to appropriate AI strategy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to analyze'
+        required: true
+      strategy:
+        description: 'Force specific strategy'
+        required: false
+        type: choice
+        options:
+          - auto
+          - fast-draft
+          - standard-review
+          - critical-security
+          - deep-analysis
+          - ui-review
+          - ultrathink
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  checks: write
+  id-token: write  # For OIDC check_run_id claim
+
+jobs:
+  detect-strategy:
+    name: Detect Review Strategy
+    runs-on: ubuntu-latest
+    outputs:
+      strategy: ${{ steps.detect.outputs.strategy }}
+      pr_size: ${{ steps.detect.outputs.pr_size }}
+      has_security: ${{ steps.detect.outputs.has_security }}
+      has_ui: ${{ steps.detect.outputs.has_ui }}
+      complexity: ${{ steps.detect.outputs.complexity }}
+      cost_estimate: ${{ steps.detect.outputs.cost_estimate }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Strategy
+        id: detect
+        run: |
+          # Get PR details
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PR_NUMBER="${{ inputs.pr_number }}"
+          else
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          fi
+
+          # Get PR metadata
+          gh pr view "$PR_NUMBER" --json files,additions,deletions,labels,title,body > pr.json
+
+          # Calculate metrics
+          FILES=$(jq '.files | length' pr.json)
+          ADDITIONS=$(jq '.additions' pr.json)
+          DELETIONS=$(jq '.deletions' pr.json)
+          TOTAL_CHANGES=$((ADDITIONS + DELETIONS))
+
+          # Check for slash commands
+          if [[ "${{ github.event.comment.body }}" =~ ^/ai- ]]; then
+            COMMAND="${{ github.event.comment.body }}"
+            case "$COMMAND" in
+              /ai-fast*)         STRATEGY="fast-draft" ;;
+              /ai-standard*)     STRATEGY="standard-review" ;;
+              /ai-deep*)         STRATEGY="deep-analysis" ;;
+              /ai-security*)     STRATEGY="critical-security" ;;
+              /ai-ui*)           STRATEGY="ui-review" ;;
+              /ai-ultrathink*)   STRATEGY="ultrathink" ;;
+              *)                 STRATEGY="auto" ;;
+            esac
+          elif [ "${{ inputs.strategy }}" != "auto" ] && [ -n "${{ inputs.strategy }}" ]; then
+            STRATEGY="${{ inputs.strategy }}"
+          else
+            STRATEGY="auto"
+          fi
+
+          # Auto-detect if strategy is auto
+          if [ "$STRATEGY" = "auto" ]; then
+            # Check labels
+            LABELS=$(jq -r '.labels[].name' pr.json)
+
+            if echo "$LABELS" | grep -qi "security\|critical\|production"; then
+              STRATEGY="critical-security"
+              COST=0.35
+            elif echo "$LABELS" | grep -qi "ui\|design\|frontend"; then
+              STRATEGY="ui-review"
+              COST=0.15
+            elif [ "$TOTAL_CHANGES" -gt 2000 ] || [ "$FILES" -gt 30 ]; then
+              STRATEGY="deep-analysis"
+              COST=0.25
+            elif [ "$TOTAL_CHANGES" -lt 100 ] && echo "$LABELS" | grep -qi "draft\|wip"; then
+              STRATEGY="fast-draft"
+              COST=0.003
+            else
+              STRATEGY="standard-review"
+              COST=0.08
+            fi
+          fi
+
+          # Determine cost
+          case "$STRATEGY" in
+            fast-draft)         COST=0.003 ;;
+            standard-review)    COST=0.08 ;;
+            critical-security)  COST=0.35 ;;
+            deep-analysis)      COST=0.25 ;;
+            ui-review)          COST=0.15 ;;
+            ultrathink)         COST=0.50 ;;
+          esac
+
+          # Output results
+          echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
+          echo "pr_size=$TOTAL_CHANGES" >> $GITHUB_OUTPUT
+          echo "has_security=$(echo $LABELS | grep -qi 'security' && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "has_ui=$(echo $LABELS | grep -qi 'ui\|frontend' && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "complexity=$([ $TOTAL_CHANGES -gt 1000 ] && echo high || echo normal)" >> $GITHUB_OUTPUT
+          echo "cost_estimate=$COST" >> $GITHUB_OUTPUT
+
+          # Post strategy to PR
+          gh pr comment "$PR_NUMBER" --body "🤖 **AI Review Strategy Detected**: \`$STRATEGY\`
+
+          **Metrics:**
+          - Files changed: $FILES
+          - Lines changed: $TOTAL_CHANGES
+          - Estimated cost: \$$COST
+          - Complexity: $([ $TOTAL_CHANGES -gt 1000 ] && echo 'High' || echo 'Normal')
+
+          Review will start shortly..."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  execute-strategy:
+    name: Execute ${{ needs.detect-strategy.outputs.strategy }}
+    needs: detect-strategy
+    uses: ./.github/workflows/strategy-${{ needs.detect-strategy.outputs.strategy }}.yml
+    with:
+      pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
+      complexity: ${{ needs.detect-strategy.outputs.complexity }}
+      pr_size: ${{ needs.detect-strategy.outputs.pr_size }}
+    secrets: inherit
+
+  post-results:
+    name: Post Aggregated Results
+    needs: [detect-strategy, execute-strategy]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./results
+
+      - name: Aggregate Results
+        run: |
+          # Combine all review outputs
+          find ./results -name "review-*.md" -exec cat {} \; > combined-review.md
+
+          # Calculate total cost
+          TOTAL_COST=$(find ./results -name "cost.txt" -exec cat {} \; | awk '{s+=$1} END {print s}')
+
+          # Format final review
+          cat > final-review.md << 'EOF'
+          # 🤖 AI Code Review (2025)
+
+          **Strategy**: ${{ needs.detect-strategy.outputs.strategy }}
+          **Total Cost**: $${TOTAL_COST}
+          **Models Used**: $(find ./results -name "model.txt" -exec cat {} \; | sort -u | tr '\n' ', ')
+
+          ---
+
+          EOF
+
+          cat combined-review.md >> final-review.md
+
+      - name: Post to PR
+        run: |
+          gh pr comment "${{ github.event.pull_request.number || inputs.pr_number }}" \
+            --body-file final-review.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload final review
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-review
+          path: final-review.md
+
+  update-metrics:
+    name: Update Cost Metrics
+    needs: [detect-strategy, post-results]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update metrics
+        run: |
+          # Update monthly cost tracking
+          mkdir -p .github/metrics
+          DATE=$(date +%Y-%m)
+          COST=${{ needs.detect-strategy.outputs.cost_estimate }}
+
+          echo "$DATE,$COST,${{ needs.detect-strategy.outputs.strategy }}" \
+            >> .github/metrics/ai-costs.csv
+
+          # Calculate monthly total
+          MONTHLY_TOTAL=$(awk -F, -v date="$DATE" '$1==date {s+=$2} END {print s}' \
+            .github/metrics/ai-costs.csv)
+
+          echo "Monthly AI cost: \$$MONTHLY_TOTAL"
+
+          # Alert if over budget
+          if (( $(echo "$MONTHLY_TOTAL > 50" | bc -l) )); then
+            echo "::warning::Monthly AI budget exceeded: \$$MONTHLY_TOTAL / \$50"
+          fi

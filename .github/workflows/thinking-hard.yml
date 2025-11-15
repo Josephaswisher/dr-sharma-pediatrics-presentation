@@ -1,0 +1,196 @@
+name: Thinking Mode - Hard
+# Hard thinking mode: 'think harder' (8000 tokens, 10-20s)
+# Use for complex architectural reviews and refactoring
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      task_description:
+        required: true
+        type: string
+      model:
+        required: true
+        type: string
+
+jobs:
+  hard-thinking:
+    name: Hard Thinking Review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get comprehensive PR context
+        run: |
+          gh pr diff "${{ inputs.pr_number }}" > pr.diff
+          gh pr view "${{ inputs.pr_number }}" --json title,body,files,labels,additions,deletions > pr-metadata.json
+
+          # Get related files for context
+          FILES=$(jq -r '.files[].path' pr-metadata.json)
+          mkdir -p context
+
+          for file in $FILES; do
+            if [ -f "$file" ]; then
+              # Get file history
+              git log --oneline -5 "$file" > "context/$(basename $file).history" || true
+
+              # Get file content
+              cat "$file" > "context/$(basename $file)" 2>/dev/null || true
+            fi
+          done
+
+          # Get recent related commits
+          git log --oneline -10 --grep="$(jq -r '.title' pr-metadata.json | sed 's/:.*//')" > context/related-commits.txt || true
+
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build deep thinking prompt
+        run: |
+          cat > prompt.txt << EOF
+          Think harder about the implications and edge cases of these changes.
+
+          **Deep Analysis Required**: ${{ inputs.task_description }}
+
+          **PR Details**:
+          - Title: $(cat pr-metadata.json | jq -r '.title')
+          - Changes: $(cat pr-metadata.json | jq -r '"\(.additions) additions, \(.deletions) deletions"')
+          - Labels: $(cat pr-metadata.json | jq -r '.labels[].name' | tr '\n' ', ')
+
+          **Description**:
+          $(cat pr-metadata.json | jq -r '.body')
+
+          **Code Diff**:
+          \`\`\`diff
+          $(cat pr.diff)
+          \`\`\`
+
+          **File History Context**:
+          EOF
+
+          # Add file histories
+          for history in context/*.history; do
+            if [ -f "$history" ]; then
+              echo "\n### $(basename $history .history)" >> prompt.txt
+              cat "$history" >> prompt.txt
+            fi
+          done
+
+          cat >> prompt.txt << EOF
+
+          **Related Commits**:
+          $(cat context/related-commits.txt)
+
+          ---
+
+          Think deeply about:
+
+          1. **Architecture & Design**:
+             - How does this fit into the overall system architecture?
+             - Are there better design patterns we could use?
+             - What are the long-term maintainability implications?
+
+          2. **Security & Reliability**:
+             - What security vulnerabilities could this introduce?
+             - How will this behave under edge cases and error conditions?
+             - What are the failure modes?
+
+          3. **Performance & Scalability**:
+             - What is the performance impact (time/space complexity)?
+             - Will this scale with increased load?
+             - Are there optimization opportunities?
+
+          4. **Testing & Validation**:
+             - What test cases are needed to validate this?
+             - Are there integration testing concerns?
+             - What could break existing functionality?
+
+          5. **Dependencies & Integration**:
+             - How does this affect other parts of the codebase?
+             - Are there dependency concerns?
+             - What documentation needs updating?
+
+          Provide a comprehensive, well-reasoned analysis with specific recommendations.
+          EOF
+
+      - name: Execute with hard thinking
+        run: |
+          if [ "${{ inputs.model }}" = "claude-sonnet-4-5" ]; then
+            RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+              -H "Content-Type: application/json" \
+              -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+              -H "anthropic-version: 2023-06-01" \
+              -d @- << EOFAPI
+            {
+              "model": "claude-sonnet-4-5-20250929",
+              "max_tokens": 16000,
+              "messages": [{
+                "role": "user",
+                "content": "$(cat prompt.txt | jq -Rs .)"
+              }]
+            }
+          EOFAPI
+            )
+
+            echo "$RESPONSE" | jq -r '.content[0].text' > review.md
+            INPUT=$(echo "$RESPONSE" | jq -r '.usage.input_tokens')
+            OUTPUT=$(echo "$RESPONSE" | jq -r '.usage.output_tokens')
+            COST=$(echo "scale=4; ($INPUT * 3 + $OUTPUT * 15) / 1000000" | bc)
+
+          elif [ "${{ inputs.model }}" = "claude-opus-4-1" ]; then
+            RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+              -H "Content-Type: application/json" \
+              -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+              -H "anthropic-version: 2023-06-01" \
+              -d @- << EOFAPI
+            {
+              "model": "claude-opus-4-1-20250805",
+              "max_tokens": 16000,
+              "messages": [{
+                "role": "user",
+                "content": "$(cat prompt.txt | jq -Rs .)"
+              }]
+            }
+          EOFAPI
+            )
+
+            echo "$RESPONSE" | jq -r '.content[0].text' > review.md
+            INPUT=$(echo "$RESPONSE" | jq -r '.usage.input_tokens')
+            OUTPUT=$(echo "$RESPONSE" | jq -r '.usage.output_tokens')
+            COST=$(echo "scale=4; ($INPUT * 15 + $OUTPUT * 75) / 1000000" | bc)
+          fi
+
+          echo "$COST" > cost.txt
+
+      - name: Format with thinking metadata
+        run: |
+          cat > final-review.md << 'EOF'
+          ## 🧠 Hard Thinking Mode
+
+          **Thinking Budget**: 8,000 tokens (~10-20 seconds)
+          **Model**: ${{ inputs.model }}
+          **Analysis Depth**: Deep architectural and security review
+
+          ---
+
+          EOF
+
+          cat review.md >> final-review.md
+
+          cat >> final-review.md << 'EOF'
+
+          ---
+          *This review used extended hard thinking for comprehensive analysis*
+          EOF
+
+      - name: Upload review
+        uses: actions/upload-artifact@v4
+        with:
+          name: thinking-hard-review
+          path: |
+            final-review.md
+            cost.txt

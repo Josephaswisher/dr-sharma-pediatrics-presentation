@@ -1,0 +1,108 @@
+name: Model - Claude Haiku 4.5
+# Executor for Claude Haiku 4.5 (claude-haiku-4-5-20251015)
+# Context: 200K | Output: 4K | Cost: $0.25/$1.25 per 1M tokens
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      mode:
+        required: true
+        type: string
+      thinking_level:
+        required: true
+        type: string
+      focus_areas:
+        required: true
+        type: string
+
+jobs:
+  haiku-review:
+    name: Execute Haiku 4.5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          gh pr diff "${{ inputs.pr_number }}" > pr.diff
+          gh pr view "${{ inputs.pr_number }}" --json title,body > pr-metadata.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build prompt
+        run: |
+          cat > prompt.txt << EOF
+          Quick code review for draft PR.
+
+          **Focus**: ${{ inputs.focus_areas }}
+
+          **PR**: $(cat pr-metadata.json | jq -r '.title')
+
+          **Changes:**
+          \`\`\`diff
+          $(cat pr.diff | head -200)
+          \`\`\`
+
+          Provide quick feedback on:
+          1. Obvious bugs or syntax errors
+          2. Basic style violations
+          3. Simple improvements
+
+          Keep it concise (max 500 words).
+          EOF
+
+      - name: Call Claude Haiku 4.5 API
+        run: |
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+            -H "anthropic-version: 2023-06-01" \
+            -d @- << EOF
+          {
+            "model": "claude-haiku-4-5-20251015",
+            "max_tokens": 4096,
+            "messages": [{
+              "role": "user",
+              "content": "$(cat prompt.txt | jq -Rs .)"
+            }]
+          }
+          EOF
+          )
+
+          echo "$RESPONSE" | jq -r '.content[0].text' > review.md
+
+          # Calculate cost ($0.25/$1.25 per 1M tokens)
+          INPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.input_tokens')
+          OUTPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.output_tokens')
+          COST=$(echo "scale=5; ($INPUT_TOKENS * 0.25 + $OUTPUT_TOKENS * 1.25) / 1000000" | bc)
+          echo "$COST" > cost.txt
+          echo "model=claude-haiku-4-5-20251015" > model.txt
+
+      - name: Format output
+        run: |
+          cat > output.md << 'EOF'
+          ## ⚡ Quick Review (Haiku 4.5)
+
+          EOF
+          cat review.md >> output.md
+
+          cat >> output.md << 'EOF'
+
+          ---
+          💡 This is a draft review. For comprehensive analysis, use `/ai-standard` or `/ai-deep`
+          EOF
+
+      - name: Upload review artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: haiku-review
+          path: |
+            output.md
+            cost.txt
+            model.txt

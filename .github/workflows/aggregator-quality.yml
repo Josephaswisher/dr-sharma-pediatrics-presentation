@@ -1,0 +1,157 @@
+name: Aggregator - Code Quality
+# Combines code quality assessments from multiple AI models
+# Identifies patterns, best practices violations, maintainability issues
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+
+jobs:
+  aggregate-quality:
+    name: Aggregate Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all reviews
+        uses: actions/download-artifact@v4
+        with:
+          path: ./reviews
+
+      - name: Aggregate quality metrics
+        run: |
+          cat > aggregate-quality.py << 'EOF'
+          import re
+          from pathlib import Path
+          from collections import defaultdict, Counter
+
+          # Quality issue patterns
+          QUALITY_PATTERNS = {
+              'Code Duplication': r'(duplicate|duplication|repeated.*code|dry)',
+              'Long Functions': r'(long.*function|function.*too.*long|split.*function)',
+              'Complex Logic': r'(complex|complexity|simplify|nested.*if)',
+              'Poor Naming': r'(unclear.*name|better.*name|rename|descriptive)',
+              'Missing Tests': r'(missing.*test|needs.*test|add.*test)',
+              'Missing Docs': r'(missing.*doc|needs.*doc|comment|document)',
+              'Error Handling': r'(error.*handling|try.*catch|exception)',
+              'Type Safety': r'(type.*check|type.*safety|typescript|types)',
+              'Best Practices': r'(best.*practice|convention|pattern|idiomatic)',
+              'Dead Code': r'(unused|dead.*code|remove|delete)',
+              'Magic Numbers': r'(magic.*number|constant|hard.*coded)',
+              'Tight Coupling': r'(coupling|dependency|decouple|inject)'
+          }
+
+          findings = defaultdict(list)
+          models = set()
+          recommendations = []
+
+          # Process all review files
+          for review_file in Path('./reviews').rglob('*.md'):
+              content = review_file.read_text()
+              model_name = review_file.parent.name.replace('-review', '')
+              models.add(model_name)
+
+              # Find quality issues
+              for issue_type, pattern in QUALITY_PATTERNS.items():
+                  matches = list(re.finditer(pattern, content, re.IGNORECASE))
+                  findings[issue_type].extend([model_name] * len(matches))
+
+              # Extract recommendations
+              rec_matches = re.finditer(r'(?:recommend|suggest|should|consider).*?\.', content, re.IGNORECASE)
+              for match in rec_matches:
+                  recommendations.append({
+                      'model': model_name,
+                      'text': match.group(0)
+                  })
+
+          # Generate report
+          output = ["# ✨ Code Quality Analysis\n\n"]
+          output.append(f"**Models**: {', '.join(sorted(models))}\n\n")
+
+          # Quality score calculation
+          total_issues = sum(len(items) for items in findings.values())
+          score = max(0, 100 - (total_issues * 2))
+          score_emoji = '🌟' if score >= 90 else '✅' if score >= 70 else '⚠️' if score >= 50 else '❌'
+
+          output.append(f"## Overall Quality Score: {score_emoji} {score}/100\n\n")
+
+          # Issues by category
+          output.append("## Issues by Category\n\n")
+          output.append("| Category | Count | Models |\n")
+          output.append("|----------|-------|--------|\n")
+
+          for issue_type in sorted(findings.keys(), key=lambda x: len(findings[x]), reverse=True):
+              count = len(findings[issue_type])
+              if count > 0:
+                  model_list = ', '.join(set(findings[issue_type]))
+                  output.append(f"| {issue_type} | {count} | {model_list} |\n")
+
+          output.append("\n")
+
+          # Top recommendations (consensus)
+          output.append("## 🎯 Top Recommendations\n\n")
+          output.append("*These recommendations appeared across multiple models:*\n\n")
+
+          # Count recommendation frequency
+          rec_texts = [r['text'] for r in recommendations]
+          rec_counter = Counter(rec_texts)
+
+          for rec_text, count in rec_counter.most_common(10):
+              if count > 1:
+                  output.append(f"{count}. **{count} models** agree: {rec_text}\n")
+
+          output.append("\n")
+
+          # Priority actions
+          output.append("## 📋 Priority Actions\n\n")
+
+          if len(findings['Missing Tests']) > 3:
+              output.append("1. ⚠️ **Add Test Coverage**: Multiple missing test cases identified\n")
+
+          if len(findings['Code Duplication']) > 2:
+              output.append("2. 🔄 **Reduce Duplication**: Extract common code into reusable functions\n")
+
+          if len(findings['Complex Logic']) > 2:
+              output.append("3. 🧩 **Simplify Logic**: Break down complex functions into smaller units\n")
+
+          if len(findings['Poor Naming']) > 2:
+              output.append("4. 📝 **Improve Naming**: Use more descriptive variable/function names\n")
+
+          if len(findings['Missing Docs']) > 3:
+              output.append("5. 📖 **Add Documentation**: Document public APIs and complex logic\n")
+
+          # Positive feedback
+          output.append("\n## ✅ Strengths\n\n")
+
+          if len(findings['Error Handling']) == 0:
+              output.append("- ✨ Good error handling\n")
+
+          if len(findings['Type Safety']) == 0:
+              output.append("- 💪 Strong type safety\n")
+
+          if len(findings['Dead Code']) == 0:
+              output.append("- 🧹 No dead code detected\n")
+
+          output.append("\n---\n\n")
+          output.append(f"*Analyzed by {len(models)} AI models for comprehensive quality assessment*\n")
+
+          Path('aggregated-quality.md').write_text(''.join(output))
+          EOF
+
+          python aggregate-quality.py
+
+      - name: Upload aggregated report
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-aggregate
+          path: aggregated-quality.md
+
+      - name: Post to PR
+        run: |
+          gh pr comment "${{ inputs.pr_number }}" \
+            --body "$(cat aggregated-quality.md)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

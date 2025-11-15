@@ -1,0 +1,131 @@
+name: Strategy - UI Review
+# Multimodal UI/UX analysis with screenshots ($0.15 per review)
+# Uses GPT-4o (multimodal) + Sonnet 4.5
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      complexity:
+        required: true
+        type: string
+      pr_size:
+        required: true
+        type: string
+
+jobs:
+  capture-screenshots:
+    name: Capture UI Screenshots
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup preview environment
+        run: |
+          # Build and start preview server
+          if [ -f "package.json" ]; then
+            npm ci
+            npm run build
+            npm run preview &
+            sleep 10
+          fi
+
+      - name: Capture screenshots
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Take screenshots with Puppeteer
+        run: |
+          cat > screenshot.js << 'EOF'
+          const puppeteer = require('puppeteer');
+          const fs = require('fs');
+
+          (async () => {
+            const browser = await puppeteer.launch();
+            const page = await browser.newPage();
+
+            await page.setViewport({ width: 1920, height: 1080 });
+            await page.goto('http://localhost:3000');
+
+            // Capture different states
+            await page.screenshot({ path: 'desktop.png', fullPage: true });
+
+            await page.setViewport({ width: 375, height: 812 }); // iPhone
+            await page.screenshot({ path: 'mobile.png', fullPage: true });
+
+            await browser.close();
+          })();
+          EOF
+
+          npx puppeteer screenshot.js
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: |
+            desktop.png
+            mobile.png
+
+  gpt4o-visual:
+    name: GPT-4o Visual Analysis
+    needs: capture-screenshots
+    uses: ./.github/workflows/model-gpt-4o.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      mode: 'visual-analysis'
+      thinking_level: 'none'
+      focus_areas: 'ui-consistency,responsive,accessibility,ux'
+      screenshots: 'true'
+    secrets: inherit
+
+  sonnet-code:
+    name: Sonnet 4.5 Code Review
+    uses: ./.github/workflows/model-sonnet-4-5.yml
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      mode: 'frontend-focused'
+      thinking_level: 'think'
+      focus_areas: 'react-patterns,css,performance,a11y'
+    secrets: inherit
+
+  post-review:
+    name: Post UI Review
+    needs: [gpt4o-visual, sonnet-code]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download reviews
+        uses: actions/download-artifact@v4
+        with:
+          path: ./reviews
+
+      - name: Combine UI review
+        run: |
+          cat > ui-review.md << 'EOF'
+          # 🎨 UI/UX Review
+
+          ## Visual Analysis (GPT-4o)
+          EOF
+
+          cat ./reviews/gpt4o-review/output.md >> ui-review.md
+
+          cat >> ui-review.md << 'EOF'
+
+          ## Code Review (Sonnet 4.5)
+          EOF
+
+          cat ./reviews/sonnet-review/output.md >> ui-review.md
+
+      - name: Post to PR
+        run: |
+          gh pr comment "${{ inputs.pr_number }}" --body "$(cat ui-review.md)
+
+          ---
+          🎨 **UI Review** (2 models + screenshots) | Cost: ~\$0.15"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

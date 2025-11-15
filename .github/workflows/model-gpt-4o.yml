@@ -1,0 +1,174 @@
+name: Model - GPT-4o
+# Executor for GPT-4o (multimodal - vision + text)
+# Context: 128K | Cost: $5/$15 per 1M tokens
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      mode:
+        required: true
+        type: string
+      thinking_level:
+        required: true
+        type: string
+      focus_areas:
+        required: true
+        type: string
+      screenshots:
+        required: false
+        type: string
+        default: 'false'
+
+jobs:
+  gpt4o-review:
+    name: Execute GPT-4o (Multimodal)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        run: |
+          gh pr diff "${{ inputs.pr_number }}" > pr.diff
+          gh pr view "${{ inputs.pr_number }}" --json title,body,files > pr-metadata.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download screenshots if available
+        if: inputs.screenshots == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-screenshots
+          path: ./screenshots
+
+      - name: Encode screenshots to base64
+        if: inputs.screenshots == 'true'
+        run: |
+          if [ -f "./screenshots/desktop.png" ]; then
+            base64 ./screenshots/desktop.png > desktop.b64
+          fi
+          if [ -f "./screenshots/mobile.png" ]; then
+            base64 ./screenshots/mobile.png > mobile.b64
+          fi
+
+      - name: Build multimodal prompt
+        run: |
+          cat > prompt-base.txt << EOF
+          You are GPT-4o with multimodal vision capabilities.
+
+          **Review Mode**: ${{ inputs.mode }}
+          **Focus**: ${{ inputs.focus_areas }}
+
+          **PR**: $(cat pr-metadata.json | jq -r '.title')
+
+          **Code Changes:**
+          \`\`\`diff
+          $(cat pr.diff)
+          \`\`\`
+
+          Analyze:
+          1. **UI Consistency**: Design system adherence, spacing, typography
+          2. **Responsive Design**: Mobile vs desktop differences
+          3. **Accessibility**: ARIA labels, contrast, keyboard navigation
+          4. **Visual Bugs**: Layout issues, overlapping elements, alignment
+          5. **UX Patterns**: Intuitive interactions, feedback, error states
+
+          Provide specific, actionable feedback with CSS/HTML examples.
+          EOF
+
+          # Build API request with or without images
+          if [ -f "desktop.b64" ]; then
+            # Multimodal with images
+            cat > api-request.json << EOF
+          {
+            "model": "gpt-4o",
+            "messages": [{
+              "role": "system",
+              "content": "You are an expert UI/UX reviewer with vision capabilities."
+            }, {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "$(cat prompt-base.txt | jq -Rs .)"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "data:image/png;base64,$(cat desktop.b64)"
+                  }
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "data:image/png;base64,$(cat mobile.b64)"
+                  }
+                }
+              ]
+            }],
+            "max_tokens": 4000
+          }
+          EOF
+          else
+            # Text only
+            cat > api-request.json << EOF
+          {
+            "model": "gpt-4o",
+            "messages": [{
+              "role": "system",
+              "content": "You are an expert UI/UX code reviewer."
+            }, {
+              "role": "user",
+              "content": "$(cat prompt-base.txt | jq -Rs .)"
+            }],
+            "max_tokens": 4000
+          }
+          EOF
+          fi
+
+      - name: Call GPT-4o API
+        run: |
+          RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
+            -d @api-request.json)
+
+          echo "$RESPONSE" | jq -r '.choices[0].message.content' > review.md
+
+          # Calculate cost ($5/$15 per 1M tokens)
+          INPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.prompt_tokens')
+          OUTPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.completion_tokens')
+          COST=$(echo "scale=4; ($INPUT_TOKENS * 5 + $OUTPUT_TOKENS * 15) / 1000000" | bc)
+          echo "$COST" > cost.txt
+          echo "model=gpt-4o" > model.txt
+
+      - name: Format visual review
+        run: |
+          cat > output.md << 'EOF'
+          ## 👁️ Visual Analysis (GPT-4o)
+
+          EOF
+          cat review.md >> output.md
+
+          if [ -f "desktop.b64" ]; then
+            cat >> output.md << 'EOF'
+
+          **Screenshots Analyzed**:
+          - ✅ Desktop (1920x1080)
+          - ✅ Mobile (375x812)
+          EOF
+          fi
+
+      - name: Upload review artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpt4o-review
+          path: |
+            output.md
+            review.md
+            cost.txt
+            model.txt

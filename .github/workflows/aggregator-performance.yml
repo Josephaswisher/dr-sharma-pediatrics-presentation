@@ -1,0 +1,143 @@
+name: Aggregator - Performance Analysis
+# Combines performance analysis from multiple AI models
+# Identifies bottlenecks, optimization opportunities, complexity issues
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+
+jobs:
+  aggregate-performance:
+    name: Aggregate Performance Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all reviews
+        uses: actions/download-artifact@v4
+        with:
+          path: ./reviews
+
+      - name: Aggregate performance insights
+        run: |
+          cat > aggregate-perf.py << 'EOF'
+          import re
+          from pathlib import Path
+          from collections import defaultdict
+
+          # Performance issue patterns
+          PERF_PATTERNS = {
+              'O(n²) Complexity': r'(O\(n[²2]\)|nested.*loop|double.*loop|quadratic)',
+              'Database N+1': r'(n\+1|query.*loop|loop.*query)',
+              'Memory Leak': r'(memory.*leak|unbounded.*growth|reference.*cycle)',
+              'Blocking Operations': r'(blocking|synchronous|await.*loop|promise.*loop)',
+              'Large Data Processing': r'(large.*array|big.*data|memory.*intensive)',
+              'Inefficient Algorithms': r'(inefficient|optimize|better.*approach)',
+              'Caching Opportunities': r'(cache|memoize|repeated.*computation)',
+              'Unnecessary Rerenders': r'(rerender|useMemo|useCallback|React\.memo)'
+          }
+
+          findings = defaultdict(list)
+          models = set()
+
+          # Process all review files
+          for review_file in Path('./reviews').rglob('*.md'):
+              content = review_file.read_text()
+              model_name = review_file.parent.name.replace('-review', '')
+              models.add(model_name)
+
+              for issue_type, pattern in PERF_PATTERNS.items():
+                  matches = list(re.finditer(pattern, content, re.IGNORECASE))
+                  if matches:
+                      # Get context around match
+                      for match in matches:
+                          start = max(0, match.start() - 150)
+                          end = min(len(content), match.end() + 150)
+                          context = content[start:end].strip()
+
+                          findings[issue_type].append({
+                              'model': model_name,
+                              'context': context
+                          })
+
+          # Generate report
+          output = ["# ⚡ Performance Analysis - Aggregated Findings\n\n"]
+          output.append(f"**Models Analyzed**: {', '.join(sorted(models))}\n\n")
+
+          # Summary
+          total_issues = sum(len(items) for items in findings.values())
+          output.append(f"**Total Performance Issues**: {total_issues}\n\n")
+
+          output.append("## Summary by Category\n\n")
+          for issue_type in sorted(findings.keys(), key=lambda x: len(findings[x]), reverse=True):
+              count = len(findings[issue_type])
+              if count > 0:
+                  output.append(f"- **{issue_type}**: {count} occurrences\n")
+
+          output.append("\n---\n\n")
+
+          # Detailed findings
+          output.append("## Detailed Performance Issues\n\n")
+
+          for issue_type, items in sorted(findings.items(), key=lambda x: len(x[1]), reverse=True):
+              if not items:
+                  continue
+
+              output.append(f"### {issue_type}\n\n")
+              output.append(f"**Found by**: {', '.join(set(item['model'] for item in items))}\n\n")
+
+              # Deduplicate similar contexts
+              unique_contexts = []
+              for item in items:
+                  is_dup = False
+                  for existing in unique_contexts:
+                      if existing['context'][:80] == item['context'][:80]:
+                          is_dup = True
+                          break
+                  if not is_dup:
+                      unique_contexts.append(item)
+
+              for item in unique_contexts[:3]:  # Show top 3
+                  output.append(f"```\n{item['context']}\n```\n\n")
+
+              if len(unique_contexts) > 3:
+                  output.append(f"*...and {len(unique_contexts) - 3} more instances*\n\n")
+
+          # Optimization recommendations
+          output.append("## 🚀 Optimization Recommendations\n\n")
+
+          if 'O(n²) Complexity' in findings:
+              output.append("1. **Reduce Algorithmic Complexity**: Replace nested loops with hash maps or better algorithms\n")
+
+          if 'Database N+1' in findings:
+              output.append("2. **Fix N+1 Queries**: Use eager loading, joins, or batch queries\n")
+
+          if 'Caching Opportunities' in findings:
+              output.append("3. **Implement Caching**: Cache repeated computations or database queries\n")
+
+          if 'Unnecessary Rerenders' in findings:
+              output.append("4. **Optimize React**: Use React.memo, useMemo, and useCallback appropriately\n")
+
+          output.append("\n---\n\n")
+          output.append("*Performance analysis aggregated from multiple AI models*\n")
+
+          Path('aggregated-performance.md').write_text(''.join(output))
+          EOF
+
+          python aggregate-perf.py
+
+      - name: Upload aggregated report
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-aggregate
+          path: aggregated-performance.md
+
+      - name: Post to PR
+        run: |
+          gh pr comment "${{ inputs.pr_number }}" \
+            --body "$(cat aggregated-performance.md)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
